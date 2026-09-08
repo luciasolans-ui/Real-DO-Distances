@@ -1,0 +1,1388 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Real DO Distances - Offline Impact Dashboard | PedidosYa</title>
+    <!-- Google Fonts: Outfit -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- Chart.js and SheetJS -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/lucide@0.344.0/dist/umd/lucide.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        peya: {
+                            red: '#EA044E',
+                            redDark: '#B40443',
+                            navy: '#100423',
+                            navyMuted: '#4C4359',
+                            grayText: '#70697A',
+                            bg: '#F8F9FB',
+                            positive: '#2DE1A0',
+                            info: '#04ADDF'
+                        }
+                    },
+                    fontFamily: { sans: ['Outfit', 'sans-serif'] }
+                }
+            }
+        }
+    </script>
+    <style>
+        body { font-family: 'Outfit', sans-serif; background-color: #F8F9FB; color: #100423; }
+        .peya-card { background: #ffffff; border: 1px solid #E0E0E5; border-radius: 16px; box-shadow: 0 4px 20px rgba(16, 4, 35, 0.02); transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+        .peya-card:hover { box-shadow: 0 10px 30px rgba(16, 4, 35, 0.05); transform: translateY(-2px); }
+        .dropzone { border: 2.5px dashed #E0E0E5; border-radius: 20px; background: #ffffff; transition: all 0.3s ease; }
+        .dropzone.dragover { border-color: #EA044E; background: rgba(234, 4, 78, 0.02); }
+    </style>
+</head>
+<body class="min-h-screen">
+
+    <header class="bg-white border-b border-[#E0E0E5] px-8 py-4 sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto flex justify-between items-center">
+            <div class="flex items-center space-x-3">
+                <div class="w-9 h-9 bg-peya-red rounded-xl flex items-center justify-center shadow-lg shadow-peya-red/20">
+                    <span class="text-white font-extrabold text-xl font-sans">P</span>
+                </div>
+                <div>
+                    <h1 class="text-peya-navy font-bold text-lg leading-tight">PedidosYa</h1>
+                    <p class="text-peya-grayText text-xs font-semibold uppercase tracking-wider">Experimentation & Analytics</p>
+                </div>
+            </div>
+            <div class="flex items-center space-x-4">
+                <!-- Last Loaded Date indicator added at header -->
+                <div id="last-loaded-date-header" class="hidden px-3.5 py-1 bg-peya-red/5 text-peya-red border border-peya-red/10 rounded-full text-xs font-bold uppercase tracking-wider"></div>
+                <span class="px-3 py-1 bg-peya-navy/10 text-peya-navy rounded-full text-xs font-bold uppercase tracking-wider">
+                    OFFLINE MODE
+                </span>
+                <span class="text-peya-grayText text-sm font-medium">Test de Ruteo Real DO Distances</span>
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-7xl mx-auto px-8 py-8 space-y-8">
+        
+        <!-- Welcome Zone & Drag-Drop File Upload -->
+        <div id="upload-container" class="space-y-6">
+            <div class="peya-card p-6 border-l-4 border-peya-red space-y-3">
+                <div class="flex justify-between items-start">
+                    <div>
+                        <h2 class="text-lg font-extrabold text-peya-navy">Testeo Real DO Distance (Offline Impact Analyzer)</h2>
+                        <p class="text-peya-grayText text-xs leading-relaxed mt-1 font-medium">
+                            Sube la sábana de órdenes (CSV o Excel) obtenida desde BigQuery. El dashboard clasificará automáticamente los datos de prueba (02/09 al 15/09) en Control/Treatment según el calendario del Switchback Test, y comparará con el baseline histórico de las últimas 8 semanas (08/07 al 01/09) evaluando únicamente los mismos días de la semana correspondientes para un análisis estadístico exacto.
+                        </p>
+                    </div>
+                </div>
+                <div class="pt-2 border-t border-[#E0E0E5]">
+                    <a href="https://docs.google.com/spreadsheets/d/1I7SScpwbMtX2qd7VNhP-cfp4G8P6ZrU0WMYzJ2pZGdM/edit?gid=1656014589#gid=1656014589" target="_blank" class="inline-flex items-center gap-1.5 text-xs text-peya-red font-bold hover:underline">
+                        <i data-lucide="external-link" class="w-4 h-4"></i> Ver Calendario de Testeo (Switchback Test) en Google Sheets
+                    </a>
+                </div>
+            </div>
+
+            <div id="dropzone" class="dropzone p-12 flex flex-col items-center justify-center text-center cursor-pointer shadow-sm">
+                <input type="file" id="fileInput" accept=".csv, .xlsx, .xls" class="hidden">
+                <div class="w-14 h-14 bg-peya-red/5 rounded-2xl flex items-center justify-center mb-4 text-peya-red">
+                    <i data-lucide="upload-cloud" class="w-7 h-7"></i>
+                </div>
+                <h3 class="text-peya-navy font-extrabold text-md mb-1">Arrastra tu sábana de órdenes (CSV o Excel)</h3>
+                <p class="text-peya-grayText text-xs font-semibold uppercase tracking-wider mb-4">O haz clic para buscar en tus archivos locales (.csv, .xlsx, .xls)</p>
+                <span class="px-4 py-1.5 bg-peya-navy text-white text-xs font-bold rounded-xl shadow-sm">Seleccionar Archivo</span>
+            </div>
+        </div>
+
+        <div id="dashboard-results" class="space-y-8 hidden">
+            
+            <!-- SECTION 1: CONSOLIDADOS (TEST VS CONTROL) -->
+            <div class="space-y-4">
+                <div class="space-y-0.5 border-b border-[#E0E0E5] pb-2 flex flex-col md:flex-row justify-between items-start md:items-end gap-3">
+                    <div>
+                        <h3 class="font-extrabold text-peya-navy text-lg uppercase tracking-wide">Resultados Consolidados (Test vs Control)</h3>
+                        <p class="text-xs text-peya-grayText font-semibold">Comparativa directa durante el periodo del Switchback Test (02/09 al 15/09)</p>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <!-- Freeze Dashboard Button -->
+                        <button onclick="freezeAndDownload()" class="px-3 py-1.5 bg-peya-red text-white hover:bg-peya-redDark text-xs font-bold rounded-xl transition flex items-center gap-1.5 shadow-sm shadow-peya-red/10">
+                            <i data-lucide="download" class="w-3.5 h-3.5"></i> Congelar Tablero (Descargar)
+                        </button>
+                        <button onclick="resetDashboard()" class="px-3 py-1.5 border border-peya-navy text-peya-navy hover:bg-peya-navy/5 text-xs font-bold rounded-xl transition flex items-center gap-1">
+                            <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i> Cargar Otro Archivo
+                        </button>
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 md:grid-cols-6 gap-4">
+                    <!-- DT -->
+                    <div class="peya-card p-4 space-y-2 flex flex-col justify-between">
+                        <div class="flex justify-between items-center text-peya-grayText">
+                            <span class="text-[11px] font-bold uppercase tracking-wider">Delivery Time</span>
+                            <i data-lucide="clock" class="w-3.5 h-3.5"></i>
+                        </div>
+                        <div class="flex justify-between items-baseline pt-1">
+                            <span id="top-var-dt-tc" class="text-xl font-black px-1.5 py-0.5 rounded-md">-</span>
+                            <div class="text-right text-[10px] font-semibold text-peya-grayText font-mono">
+                                <div>T: <span id="val-dt-t" class="font-bold text-peya-navy">-</span></div>
+                                <div>C: <span id="val-dt-c" class="font-bold">-</span></div>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Stacking -->
+                    <div class="peya-card p-4 space-y-2 flex flex-col justify-between">
+                        <div class="flex justify-between items-center text-peya-grayText">
+                            <span class="text-[11px] font-bold uppercase tracking-wider">Stacking</span>
+                            <i data-lucide="layers" class="w-3.5 h-3.5"></i>
+                        </div>
+                        <div class="flex justify-between items-baseline pt-1">
+                            <span id="top-var-stack-tc" class="text-xl font-black px-1.5 py-0.5 rounded-md">-</span>
+                            <div class="text-right text-[10px] font-semibold text-peya-grayText font-mono">
+                                <div>T: <span id="val-stack-t" class="font-bold text-peya-navy">-</span></div>
+                                <div>C: <span id="val-stack-c" class="font-bold">-</span></div>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Dist PU -->
+                    <div class="peya-card p-4 space-y-2 flex flex-col justify-between">
+                        <div class="flex justify-between items-center text-peya-grayText">
+                            <span class="text-[11px] font-bold uppercase tracking-wider">Distancia PU</span>
+                            <i data-lucide="map-pin" class="w-3.5 h-3.5"></i>
+                        </div>
+                        <div class="flex justify-between items-baseline pt-1">
+                            <span id="top-var-pu-tc" class="text-xl font-black px-1.5 py-0.5 rounded-md">-</span>
+                            <div class="text-right text-[10px] font-semibold text-peya-grayText font-mono">
+                                <div>T: <span id="val-pu-t" class="font-bold text-peya-navy">-</span></div>
+                                <div>C: <span id="val-pu-c" class="font-bold">-</span></div>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Dist DO -->
+                    <div class="peya-card p-4 space-y-2 flex flex-col justify-between">
+                        <div class="flex justify-between items-center text-peya-grayText">
+                            <span class="text-[11px] font-bold uppercase tracking-wider">Distancia DO</span>
+                            <i data-lucide="navigation" class="w-3.5 h-3.5"></i>
+                        </div>
+                        <div class="flex justify-between items-baseline pt-1">
+                            <span id="top-var-do-tc" class="text-xl font-black px-1.5 py-0.5 rounded-md">-</span>
+                            <div class="text-right text-[10px] font-semibold text-peya-grayText font-mono">
+                                <div>T: <span id="val-do-t" class="font-bold text-peya-navy">-</span></div>
+                                <div>C: <span id="val-do-c" class="font-bold">-</span></div>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Seamless -->
+                    <div class="peya-card p-4 space-y-2 flex flex-col justify-between">
+                        <div class="flex justify-between items-center text-peya-grayText">
+                            <span class="text-[11px] font-bold uppercase tracking-wider">Seamless</span>
+                            <i data-lucide="award" class="w-3.5 h-3.5"></i>
+                        </div>
+                        <div class="flex justify-between items-baseline pt-1">
+                            <span id="top-var-seam-tc" class="text-xl font-black px-1.5 py-0.5 rounded-md">-</span>
+                            <div class="text-right text-[10px] font-semibold text-peya-grayText font-mono">
+                                <div>T: <span id="val-seam-t" class="font-bold text-peya-navy">-</span></div>
+                                <div>C: <span id="val-seam-c" class="font-bold">-</span></div>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- CPO Total -->
+                    <div class="peya-card p-4 space-y-2 flex flex-col justify-between">
+                        <div class="flex justify-between items-center text-peya-grayText">
+                            <span class="text-[11px] font-bold uppercase tracking-wider">CPO Total</span>
+                            <i data-lucide="dollar-sign" class="w-3.5 h-3.5"></i>
+                        </div>
+                        <div class="flex justify-between items-baseline pt-1">
+                            <span id="top-var-cpotot-tc" class="text-xl font-black px-1.5 py-0.5 rounded-md">-</span>
+                            <div class="text-right text-[10px] font-semibold text-peya-grayText font-mono">
+                                <div>T: <span id="val-cpotot-t" class="font-bold text-peya-navy">-</span></div>
+                                <div>C: <span id="val-cpotot-c" class="font-bold">-</span></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SECTION 2: CONSOLIDADOS (TEST VS L8W) -->
+            <div class="space-y-4">
+                <div class="space-y-0.5 border-b border-[#E0E0E5] pb-2 mt-8">
+                    <h3 class="font-extrabold text-peya-navy text-lg uppercase tracking-wide">Resultados Consolidados del Testeo vs L8W Baseline</h3>
+                    <p class="text-xs text-peya-grayText font-semibold">Comparativa del grupo Treatment contra su baseline histórico de las Últimas 8 Semanas (08/07 al 01/09) emparejando únicamente los mismos días de la semana</p>
+                </div>
+                <div class="grid grid-cols-2 md:grid-cols-6 gap-4">
+                    <!-- DT -->
+                    <div class="peya-card bg-[#F8F9FB] border-dashed p-4 space-y-2 flex flex-col justify-between">
+                        <div class="flex justify-between items-center text-peya-grayText">
+                            <span class="text-[11px] font-bold uppercase tracking-wider">Delivery Time</span>
+                            <i data-lucide="clock" class="w-3.5 h-3.5"></i>
+                        </div>
+                        <div class="flex justify-between items-baseline pt-1">
+                            <span id="top-var-dt-tl4w" class="text-xl font-black px-1.5 py-0.5 rounded-md">-</span>
+                            <div class="text-right text-[10px] font-semibold text-peya-grayText font-mono">
+                                <div>T: <span id="val-dt-t2" class="font-bold text-peya-navy">-</span></div>
+                                <div>L8W: <span id="val-dt-l4w" class="font-bold">-</span></div>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Stacking -->
+                    <div class="peya-card bg-[#F8F9FB] border-dashed p-4 space-y-2 flex flex-col justify-between">
+                        <div class="flex justify-between items-center text-peya-grayText">
+                            <span class="text-[11px] font-bold uppercase tracking-wider">Stacking</span>
+                            <i data-lucide="layers" class="w-3.5 h-3.5"></i>
+                        </div>
+                        <div class="flex justify-between items-baseline pt-1">
+                            <span id="top-var-stack-tl4w" class="text-xl font-black px-1.5 py-0.5 rounded-md">-</span>
+                            <div class="text-right text-[10px] font-semibold text-peya-grayText font-mono">
+                                <div>T: <span id="val-stack-t2" class="font-bold text-peya-navy">-</span></div>
+                                <div>L8W: <span id="val-stack-l4w" class="font-bold">-</span></div>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Dist PU -->
+                    <div class="peya-card bg-[#F8F9FB] border-dashed p-4 space-y-2 flex flex-col justify-between">
+                        <div class="flex justify-between items-center text-peya-grayText">
+                            <span class="text-[11px] font-bold uppercase tracking-wider">Distancia PU</span>
+                            <i data-lucide="map-pin" class="w-3.5 h-3.5"></i>
+                        </div>
+                        <div class="flex justify-between items-baseline pt-1">
+                            <span id="top-var-pu-tl4w" class="text-xl font-black px-1.5 py-0.5 rounded-md">-</span>
+                            <div class="text-right text-[10px] font-semibold text-peya-grayText font-mono">
+                                <div>T: <span id="val-pu-t2" class="font-bold text-peya-navy">-</span></div>
+                                <div>L8W: <span id="val-pu-l4w" class="font-bold">-</span></div>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Dist DO -->
+                    <div class="peya-card bg-[#F8F9FB] border-dashed p-4 space-y-2 flex flex-col justify-between">
+                        <div class="flex justify-between items-center text-peya-grayText">
+                            <span class="text-[11px] font-bold uppercase tracking-wider">Distancia DO</span>
+                            <i data-lucide="navigation" class="w-3.5 h-3.5"></i>
+                        </div>
+                        <div class="flex justify-between items-baseline pt-1">
+                            <span id="top-var-do-tl4w" class="text-xl font-black px-1.5 py-0.5 rounded-md">-</span>
+                            <div class="text-right text-[10px] font-semibold text-peya-grayText font-mono">
+                                <div>T: <span id="val-do-t2" class="font-bold text-peya-navy">-</span></div>
+                                <div>L8W: <span id="val-do-l4w" class="font-bold">-</span></div>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Seamless -->
+                    <div class="peya-card bg-[#F8F9FB] border-dashed p-4 space-y-2 flex flex-col justify-between">
+                        <div class="flex justify-between items-center text-peya-grayText">
+                            <span class="text-[11px] font-bold uppercase tracking-wider">Seamless</span>
+                            <i data-lucide="award" class="w-3.5 h-3.5"></i>
+                        </div>
+                        <div class="flex justify-between items-baseline pt-1">
+                            <span id="top-var-seam-tl4w" class="text-xl font-black px-1.5 py-0.5 rounded-md">-</span>
+                            <div class="text-right text-[10px] font-semibold text-peya-grayText font-mono">
+                                <div>T: <span id="val-seam-t2" class="font-bold text-peya-navy">-</span></div>
+                                <div>L8W: <span id="val-seam-l4w" class="font-bold">-</span></div>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- CPO Total -->
+                    <div class="peya-card bg-[#F8F9FB] border-dashed p-4 space-y-2 flex flex-col justify-between">
+                        <div class="flex justify-between items-center text-peya-grayText">
+                            <span class="text-[11px] font-bold uppercase tracking-wider">CPO Total</span>
+                            <i data-lucide="dollar-sign" class="w-3.5 h-3.5"></i>
+                        </div>
+                        <div class="flex justify-between items-baseline pt-1">
+                            <span id="top-var-cpotot-tl4w" class="text-xl font-black px-1.5 py-0.5 rounded-md">-</span>
+                            <div class="text-right text-[10px] font-semibold text-peya-grayText font-mono">
+                                <div>T: <span id="val-cpotot-t2" class="font-bold text-peya-navy">-</span></div>
+                                <div>L8W: <span id="val-cpotot-l4w" class="font-bold">-</span></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Volume indicator -->
+            <div class="text-xs text-peya-grayText font-bold text-right pr-2">
+                Volumen Analizado: <span id="kpi-orders-count-text" class="text-peya-navy">0</span> registros (Órdenes/Lotes)
+            </div>
+
+            <!-- Section: BUCKET OF MEAN DELAY ANALYSIS (CHART.JS GRAPHS) -->
+            <div id="delay-buckets-section" class="space-y-6">
+                <div class="border-b border-[#E0E0E5] pb-2 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                    <div>
+                        <h3 class="font-extrabold text-peya-navy text-lg uppercase tracking-wide flex items-center gap-2">
+                            <i data-lucide="bar-chart-3" class="w-6 h-6 text-peya-red"></i> Análisis de Desempeño por buckets de Mean Delay
+                        </h3>
+                        <p class="text-xs text-peya-grayText font-semibold">Test vs Control según la saturación inicial de la zona</p>
+                    </div>
+                    
+                    <div class="flex flex-wrap items-center gap-4 bg-white border border-[#E0E0E5] p-3 rounded-2xl shadow-sm w-full md:w-auto">
+                        <div>
+                            <label class="block text-[10px] font-black text-peya-grayText uppercase tracking-wider mb-1">Filtrar Vertical</label>
+                            <select id="chart-filter-vertical" onchange="updateBucketChartsFiltered()" class="bg-peya-bg border border-[#E0E0E5] rounded-xl text-xs px-3 py-1.5 font-bold text-peya-navy focus:outline-none">
+                                <option value="all">Todas las Verticals</option>
+                                <option value="restaurants">Food / Restaurants</option>
+                                <option value="local_stores">Local Stores</option>
+                                <option value="darkstores">DMart / Darkstores</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-black text-peya-grayText uppercase tracking-wider mb-1">Filtrar Flota</label>
+                            <select id="chart-filter-fleet" onchange="updateBucketChartsFiltered()" class="bg-peya-bg border border-[#E0E0E5] rounded-xl text-xs px-3 py-1.5 font-bold text-peya-navy focus:outline-none max-w-[180px]">
+                                <option value="all">Todas las Flotas</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <!-- Chart 1: Dist PU and Dist DO -->
+                    <div class="peya-card p-6 space-y-4">
+                        <div class="flex justify-between items-start">
+                            <div>
+                                <h4 class="font-bold text-peya-navy text-md">Impacto en Distancia de Pick Up (PU) y Drop Off (DO)</h4>
+                                <p class="text-xs text-peya-grayText font-semibold">Comparativa de Distancia PU promedio (km) y Distancia DO (km) junto al Share de Órdenes (%)</p>
+                            </div>
+                            <!-- Metric Selector for Chart 1 -->
+                            <select id="chart1-metric-selector" onchange="updateBucketChartsFiltered()" class="bg-peya-bg border border-[#E0E0E5] rounded-xl text-[10px] px-2.5 py-1.5 font-bold text-peya-navy focus:outline-none shadow-sm">
+                                <option value="both">Ver Ambas Distancias</option>
+                                <option value="pu">Ver Solo Distancia PU</option>
+                                <option value="do">Ver Solo Distancia DO</option>
+                            </select>
+                        </div>
+                        <div class="relative h-[280px]">
+                            <canvas id="bucketDistanceChart"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- Chart 2: Times and Quality -->
+                    <div class="peya-card p-6 space-y-4">
+                        <div class="flex justify-between items-start">
+                            <div>
+                                <h4 class="font-bold text-peya-navy text-md">Tiempos y Calidad de Servicio</h4>
+                                <p class="text-xs text-peya-grayText">Evolución de Delivery Time (min) y Seamless % junto al Share de Órdenes (%)</p>
+                            </div>
+                            <!-- Metric Selector for Chart 2 -->
+                            <select id="chart2-metric-selector" onchange="updateBucketChartsFiltered()" class="bg-peya-bg border border-[#E0E0E5] rounded-xl text-[10px] px-2.5 py-1.5 font-bold text-peya-navy focus:outline-none shadow-sm">
+                                <option value="both">Ver todas las métricas</option>
+                                <option value="dt">Ver Solo Delivery Time</option>
+                                <option value="seamless">Ver Solo Seamless</option>
+                                <option value="stacked">Ver Solo Stacking</option>
+                            </select>
+                        </div>
+                        <div class="relative h-[280px]">
+                            <canvas id="bucketQualityChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Section: Switchback Fleet Breakdown Table -->
+            <div id="granular-table-section" class="peya-card p-6 space-y-4">
+                <div class="flex justify-between items-center">
+                    <div>
+                        <h4 class="font-bold text-peya-navy text-lg">Δ variación − control por flota</h4>
+                        <p id="table-subtitle" class="text-xs text-peya-grayText font-semibold">Resultados ordenados por variación de Distancia PU</p>
+                    </div>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm text-left">
+                        <thead class="bg-peya-navy text-white text-xs font-bold uppercase tracking-wider rounded-lg">
+                            <tr>
+                                <th class="p-3 rounded-l-xl">Flota ID</th>
+                                <th class="p-3 text-right">Órdenes T/C</th>
+                                <th class="p-3 text-right">Var % DT</th>
+                                <th class="p-3 text-right">Var pp Seamless</th>
+                                <th class="p-3 text-right">Var pp Late+10</th>
+                                <th class="p-3 text-right">Var % Dist PU</th>
+                                <th class="p-3 text-right">Var % Dist DO</th>
+                                <th class="p-3 text-right rounded-r-xl">Var pp Stacking</th>
+                            </tr>
+                        </thead>
+                        <tbody id="fleet-table-body" class="divide-y divide-[#E0E0E5] font-medium text-peya-navyMuted font-mono">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        lucide.createIcons();
+        let csvData = null;
+        let bucketCpoDistChartInstance = null;
+        let bucketQualityChartInstance = null;
+
+        // CALENDARIO EMBEBIDO COMPLETO DEL SWITCHBACK TEST (02/09 al 15/09)
+        const TEST_CALENDAR = {
+          "ar-Azul": {
+            "2026-09-02": "Control", "2026-09-04": "Control", "2026-09-06": "Control", "2026-09-08": "Control", "2026-09-10": "Control", "2026-09-12": "Control", "2026-09-14": "Control",
+            "2026-09-03": "Treatment", "2026-09-05": "Treatment", "2026-09-07": "Treatment", "2026-09-09": "Treatment", "2026-09-11": "Treatment", "2026-09-13": "Treatment", "2026-09-15": "Treatment"
+          },
+          "ar-bahia_blanca": {
+            "2026-09-03": "Control", "2026-09-05": "Control", "2026-09-07": "Control", "2026-09-09": "Control", "2026-09-11": "Control", "2026-09-13": "Control", "2026-09-15": "Control",
+            "2026-09-02": "Treatment", "2026-09-04": "Treatment", "2026-09-06": "Treatment", "2026-09-08": "Treatment", "2026-09-10": "Treatment", "2026-09-12": "Treatment", "2026-09-14": "Treatment"
+          },
+          "ar-bariloche": {
+            "2026-09-02": "Control", "2026-09-04": "Control", "2026-09-06": "Control", "2026-09-08": "Control", "2026-09-10": "Control", "2026-09-12": "Control", "2026-09-14": "Control",
+            "2026-09-03": "Treatment", "2026-09-05": "Treatment", "2026-09-07": "Treatment", "2026-09-09": "Treatment", "2026-09-11": "Treatment", "2026-09-13": "Treatment", "2026-09-15": "Treatment"
+          },
+          "ar-buenos_aires": {
+            "2026-09-03": "Control", "2026-09-05": "Control", "2026-09-07": "Control", "2026-09-09": "Control", "2026-09-11": "Control", "2026-09-13": "Control", "2026-09-15": "Control",
+            "2026-09-02": "Treatment", "2026-09-04": "Treatment", "2026-09-06": "Treatment", "2026-09-08": "Treatment", "2026-09-10": "Treatment", "2026-09-12": "Treatment", "2026-09-14": "Treatment"
+          },
+          "ar-buenos_aires_norte_nueva": {
+            "2026-09-02": "Control", "2026-09-04": "Control", "2026-09-06": "Control", "2026-09-08": "Control", "2026-09-10": "Control", "2026-09-12": "Control", "2026-09-14": "Control",
+            "2026-09-03": "Treatment", "2026-09-05": "Treatment", "2026-09-07": "Treatment", "2026-09-09": "Treatment", "2026-09-11": "Treatment", "2026-09-13": "Treatment", "2026-09-15": "Treatment"
+          },
+          "ar-buenos_aires_oeste": {
+            "2026-09-03": "Control", "2026-09-05": "Control", "2026-09-07": "Control", "2026-09-09": "Control", "2026-09-11": "Control", "2026-09-13": "Control", "2026-09-15": "Control",
+            "2026-09-02": "Treatment", "2026-09-04": "Treatment", "2026-09-06": "Treatment", "2026-09-08": "Treatment", "2026-09-10": "Treatment", "2026-09-12": "Treatment", "2026-09-14": "Treatment"
+          },
+          "ar-buenos_aires-norte": {
+            "2026-09-02": "Control", "2026-09-04": "Control", "2026-09-06": "Control", "2026-09-08": "Control", "2026-09-10": "Control", "2026-09-12": "Control", "2026-09-14": "Control",
+            "2026-09-03": "Treatment", "2026-09-05": "Treatment", "2026-09-07": "Treatment", "2026-09-09": "Treatment", "2026-09-11": "Treatment", "2026-09-13": "Treatment", "2026-09-15": "Treatment"
+          },
+          "ar-catamarca": {
+            "2026-09-02": "Control", "2026-09-04": "Control", "2026-09-06": "Control", "2026-09-08": "Control", "2026-09-10": "Control", "2026-09-12": "Control", "2026-09-14": "Control",
+            "2026-09-03": "Treatment", "2026-09-05": "Treatment", "2026-09-07": "Treatment", "2026-09-09": "Treatment", "2026-09-11": "Treatment", "2026-09-13": "Treatment", "2026-09-15": "Treatment"
+          },
+          "ar-cipoletti": {
+            "2026-09-03": "Control", "2026-09-05": "Control", "2026-09-07": "Control", "2026-09-09": "Control", "2026-09-11": "Control", "2026-09-13": "Control", "2026-09-15": "Control",
+            "2026-09-02": "Treatment", "2026-09-04": "Treatment", "2026-09-06": "Treatment", "2026-09-08": "Treatment", "2026-09-10": "Treatment", "2026-09-12": "Treatment", "2026-09-14": "Treatment"
+          },
+          "ar-comodoro_rivadavia": {
+            "2026-09-03": "Control", "2026-09-05": "Control", "2026-09-07": "Control", "2026-09-09": "Control", "2026-09-11": "Control", "2026-09-13": "Control", "2026-09-15": "Control",
+            "2026-09-02": "Treatment", "2026-09-04": "Treatment", "2026-09-06": "Treatment", "2026-09-08": "Treatment", "2026-09-10": "Treatment", "2026-09-12": "Treatment", "2026-09-14": "Treatment"
+          },
+          "ar-concepcion": {
+            "2026-09-03": "Control", "2026-09-05": "Control", "2026-09-07": "Control", "2026-09-09": "Control", "2026-09-11": "Control", "2026-09-13": "Control", "2026-09-15": "Control",
+            "2026-09-02": "Treatment", "2026-09-04": "Treatment", "2026-09-06": "Treatment", "2026-09-08": "Treatment", "2026-09-10": "Treatment", "2026-09-12": "Treatment", "2026-09-14": "Treatment"
+          },
+          "ar-cordoba": {
+            "2026-09-02": "Control", "2026-09-04": "Control", "2026-09-06": "Control", "2026-09-08": "Control", "2026-09-10": "Control", "2026-09-12": "Control", "2026-09-14": "Control",
+            "2026-09-03": "Treatment", "2026-09-05": "Treatment", "2026-09-07": "Treatment", "2026-09-09": "Treatment", "2026-09-11": "Treatment", "2026-09-13": "Treatment", "2026-09-15": "Treatment"
+          },
+          "ar-corrientes_resistencia": {
+            "2026-09-02": "Control", "2026-09-04": "Control", "2026-09-06": "Control", "2026-09-08": "Control", "2026-09-10": "Control", "2026-09-12": "Control", "2026-09-14": "Control",
+            "2026-09-03": "Treatment", "2026-09-05": "Treatment", "2026-09-07": "Treatment", "2026-09-09": "Treatment", "2026-09-11": "Treatment", "2026-09-13": "Treatment", "2026-09-15": "Treatment"
+          },
+          "ar-esperanza": {
+            "2026-09-03": "Control", "2026-09-05": "Control", "2026-09-07": "Control", "2026-09-09": "Control", "2026-09-11": "Control", "2026-09-13": "Control", "2026-09-15": "Control",
+            "2026-09-02": "Treatment", "2026-09-04": "Treatment", "2026-09-06": "Treatment", "2026-09-08": "Treatment", "2026-09-10": "Treatment", "2026-09-12": "Treatment", "2026-09-14": "Treatment"
+          },
+          "ar-formosa": {
+            "2026-09-02": "Control", "2026-09-04": "Control", "2026-09-06": "Control", "2026-09-08": "Control", "2026-09-10": "Control", "2026-09-12": "Control", "2026-09-14": "Control",
+            "2026-09-03": "Treatment", "2026-09-05": "Treatment", "2026-09-07": "Treatment", "2026-09-09": "Treatment", "2026-09-11": "Treatment", "2026-09-13": "Treatment", "2026-09-15": "Treatment"
+          },
+          "ar-gba_oeste": {
+            "2026-09-03": "Control", "2026-09-05": "Control", "2026-09-07": "Control", "2026-09-09": "Control", "2026-09-11": "Control", "2026-09-13": "Control", "2026-09-15": "Control",
+            "2026-09-02": "Treatment", "2026-09-04": "Treatment", "2026-09-06": "Treatment", "2026-09-08": "Treatment", "2026-09-10": "Treatment", "2026-09-12": "Treatment", "2026-09-14": "Treatment"
+          },
+          "ar-gba_sur": {
+            "2026-09-03": "Control", "2026-09-05": "Control", "2026-09-07": "Control", "2026-09-09": "Control", "2026-09-11": "Control", "2026-09-13": "Control", "2026-09-15": "Control",
+            "2026-09-02": "Treatment", "2026-09-04": "Treatment", "2026-09-06": "Treatment", "2026-09-08": "Treatment", "2026-09-10": "Treatment", "2026-09-12": "Treatment", "2026-09-14": "Treatment"
+          },
+          "ar-junin": {
+            "2026-09-02": "Control", "2026-09-04": "Control", "2026-09-06": "Control", "2026-09-08": "Control", "2026-09-10": "Control", "2026-09-12": "Control", "2026-09-14": "Control",
+            "2026-09-03": "Treatment", "2026-09-05": "Treatment", "2026-09-07": "Treatment", "2026-09-09": "Treatment", "2026-09-11": "Treatment", "2026-09-13": "Treatment", "2026-09-15": "Treatment"
+          },
+          "ar-La_Plata": {
+            "2026-09-02": "Control", "2026-09-04": "Control", "2026-09-06": "Control", "2026-09-08": "Control", "2026-09-10": "Control", "2026-09-12": "Control", "2026-09-14": "Control",
+            "2026-09-03": "Treatment", "2026-09-05": "Treatment", "2026-09-07": "Treatment", "2026-09-09": "Treatment", "2026-09-11": "Treatment", "2026-09-13": "Treatment", "2026-09-15": "Treatment"
+          },
+          "ar-la_rioja": {
+            "2026-09-02": "Control", "2026-09-04": "Control", "2026-09-06": "Control", "2026-09-08": "Control", "2026-09-10": "Control", "2026-09-12": "Control", "2026-09-14": "Control",
+            "2026-09-03": "Treatment", "2026-09-05": "Treatment", "2026-09-07": "Treatment", "2026-09-09": "Treatment", "2026-09-11": "Treatment", "2026-09-13": "Treatment", "2026-09-15": "Treatment"
+          },
+          "ar-lujan": {
+            "2026-09-02": "Control", "2026-09-04": "Control", "2026-09-06": "Control", "2026-09-08": "Control", "2026-09-10": "Control", "2026-09-12": "Control", "2026-09-14": "Control",
+            "2026-09-03": "Treatment", "2026-09-05": "Treatment", "2026-09-07": "Treatment", "2026-09-09": "Treatment", "2026-09-11": "Treatment", "2026-09-13": "Treatment", "2026-09-15": "Treatment"
+          },
+          "ar-mar_del_plata": {
+            "2026-09-03": "Control", "2026-09-05": "Control", "2026-09-07": "Control", "2026-09-09": "Control", "2026-09-11": "Control", "2026-09-13": "Control", "2026-09-15": "Control",
+            "2026-09-02": "Treatment", "2026-09-04": "Treatment", "2026-09-06": "Treatment", "2026-09-08": "Treatment", "2026-09-10": "Treatment", "2026-09-12": "Treatment", "2026-09-14": "Treatment"
+          },
+          "ar-mendoza": {
+            "2026-09-02": "Control", "2026-09-04": "Control", "2026-09-06": "Control", "2026-09-08": "Control", "2026-09-10": "Control", "2026-09-12": "Control", "2026-09-14": "Control",
+            "2026-09-03": "Treatment", "2026-09-05": "Treatment", "2026-09-07": "Treatment", "2026-09-09": "Treatment", "2026-09-11": "Treatment", "2026-09-13": "Treatment", "2026-09-15": "Treatment"
+          },
+          "ar-neuquen": {
+            "2026-09-03": "Control", "2026-09-05": "Control", "2026-09-07": "Control", "2026-09-09": "Control", "2026-09-11": "Control", "2026-09-13": "Control", "2026-09-15": "Control",
+            "2026-09-02": "Treatment", "2026-09-04": "Treatment", "2026-09-06": "Treatment", "2026-09-08": "Treatment", "2026-09-10": "Treatment", "2026-09-12": "Treatment", "2026-09-14": "Treatment"
+          },
+          "ar-olavarria": {
+            "2026-09-02": "Control", "2026-09-04": "Control", "2026-09-06": "Control", "2026-09-08": "Control", "2026-09-10": "Control", "2026-09-12": "Control", "2026-09-14": "Control",
+            "2026-09-03": "Treatment", "2026-09-05": "Treatment", "2026-09-07": "Treatment", "2026-09-09": "Treatment", "2026-09-11": "Treatment", "2026-09-13": "Treatment", "2026-09-15": "Treatment"
+          },
+          "ar-parana": {
+            "2026-09-03": "Control", "2026-09-05": "Control", "2026-09-07": "Control", "2026-09-09": "Control", "2026-09-11": "Control", "2026-09-13": "Control", "2026-09-15": "Control",
+            "2026-09-02": "Treatment", "2026-09-04": "Treatment", "2026-09-06": "Treatment", "2026-09-08": "Treatment", "2026-09-10": "Treatment", "2026-09-12": "Treatment", "2026-09-14": "Treatment"
+          },
+          "ar-pergamino": {
+            "2026-09-03": "Control", "2026-09-05": "Control", "2026-09-07": "Control", "2026-09-09": "Control", "2026-09-11": "Control", "2026-09-13": "Control", "2026-09-15": "Control",
+            "2026-09-02": "Treatment", "2026-09-04": "Treatment", "2026-09-06": "Treatment", "2026-09-08": "Treatment", "2026-09-10": "Treatment", "2026-09-12": "Treatment", "2026-09-14": "Treatment"
+          },
+          "ar-pinamar": {
+            "2026-09-02": "Control", "2026-09-04": "Control", "2026-09-06": "Control", "2026-09-08": "Control", "2026-09-10": "Control", "2026-09-12": "Control", "2026-09-14": "Control",
+            "2026-09-03": "Treatment", "2026-09-05": "Treatment", "2026-09-07": "Treatment", "2026-09-09": "Treatment", "2026-09-11": "Treatment", "2026-09-13": "Treatment", "2026-09-15": "Treatment"
+          },
+          "ar-posadas": {
+            "2026-09-03": "Control", "2026-09-05": "Control", "2026-09-07": "Control", "2026-09-09": "Control", "2026-09-11": "Control", "2026-09-13": "Control", "2026-09-15": "Control",
+            "2026-09-02": "Treatment", "2026-09-04": "Treatment", "2026-09-06": "Treatment", "2026-09-08": "Treatment", "2026-09-10": "Treatment", "2026-09-12": "Treatment", "2026-09-14": "Treatment"
+          },
+          "ar-puerto_madryn": {
+            "2026-09-03": "Control", "2026-09-05": "Control", "2026-09-07": "Control", "2026-09-09": "Control", "2026-09-11": "Control", "2026-09-13": "Control", "2026-09-15": "Control",
+            "2026-09-02": "Treatment", "2026-09-04": "Treatment", "2026-09-06": "Treatment", "2026-09-08": "Treatment", "2026-09-10": "Treatment", "2026-09-12": "Treatment", "2026-09-14": "Treatment"
+          },
+          "ar-rafaela": {
+            "2026-09-02": "Control", "2026-09-04": "Control", "2026-09-06": "Control", "2026-09-08": "Control", "2026-09-10": "Control", "2026-09-12": "Control", "2026-09-14": "Control",
+            "2026-09-03": "Treatment", "2026-09-05": "Treatment", "2026-09-07": "Treatment", "2026-09-09": "Treatment", "2026-09-11": "Treatment", "2026-09-13": "Treatment", "2026-09-15": "Treatment"
+          },
+          "ar-reconquista": {
+            "2026-09-02": "Control", "2026-09-04": "Control", "2026-09-06": "Control", "2026-09-08": "Control", "2026-09-10": "Control", "2026-09-12": "Control", "2026-09-14": "Control",
+            "2026-09-03": "Treatment", "2026-09-05": "Treatment", "2026-09-07": "Treatment", "2026-09-09": "Treatment", "2026-09-11": "Treatment", "2026-09-13": "Treatment", "2026-09-15": "Treatment"
+          },
+          "ar-resistencia": {
+            "2026-09-02": "Control", "2026-09-04": "Control", "2026-09-06": "Control", "2026-09-08": "Control", "2026-09-10": "Control", "2026-09-12": "Control", "2026-09-14": "Control",
+            "2026-09-03": "Treatment", "2026-09-05": "Treatment", "2026-09-07": "Treatment", "2026-09-09": "Treatment", "2026-09-11": "Treatment", "2026-09-13": "Treatment", "2026-09-15": "Treatment"
+          },
+          "ar-rio_cuarto": {
+            "2026-09-02": "Control", "2026-09-04": "Control", "2026-09-06": "Control", "2026-09-08": "Control", "2026-09-10": "Control", "2026-09-12": "Control", "2026-09-14": "Control",
+            "2026-09-03": "Treatment", "2026-09-05": "Treatment", "2026-09-07": "Treatment", "2026-09-09": "Treatment", "2026-09-11": "Treatment", "2026-09-13": "Treatment", "2026-09-15": "Treatment"
+          },
+          "ar-rio_gallegos": {
+            "2026-09-03": "Control", "2026-09-05": "Control", "2026-09-07": "Control", "2026-09-09": "Control", "2026-09-11": "Control", "2026-09-13": "Control", "2026-09-15": "Control",
+            "2026-09-02": "Treatment", "2026-09-04": "Treatment", "2026-09-06": "Treatment", "2026-09-08": "Treatment", "2026-09-10": "Treatment", "2026-09-12": "Treatment", "2026-09-14": "Treatment"
+          },
+          "ar-rosario": {
+            "2026-09-02": "Control", "2026-09-04": "Control", "2026-09-06": "Control", "2026-09-08": "Control", "2026-09-10": "Control", "2026-09-12": "Control", "2026-09-14": "Control",
+            "2026-09-03": "Treatment", "2026-09-05": "Treatment", "2026-09-07": "Treatment", "2026-09-09": "Treatment", "2026-09-11": "Treatment", "2026-09-13": "Treatment", "2026-09-15": "Treatment"
+          },
+          "ar-saenz_pena": {
+            "2026-09-03": "Control", "2026-09-05": "Control", "2026-09-07": "Control", "2026-09-09": "Control", "2026-09-11": "Control", "2026-09-13": "Control", "2026-09-15": "Control",
+            "2026-09-02": "Treatment", "2026-09-04": "Treatment", "2026-09-06": "Treatment", "2026-09-08": "Treatment", "2026-09-10": "Treatment", "2026-09-12": "Treatment", "2026-09-14": "Treatment"
+          },
+          "ar-salta": {
+            "2026-09-02": "Control", "2026-09-04": "Control", "2026-09-06": "Control", "2026-09-08": "Control", "2026-09-10": "Control", "2026-09-12": "Control", "2026-09-14": "Control",
+            "2026-09-03": "Treatment", "2026-09-05": "Treatment", "2026-09-07": "Treatment", "2026-09-09": "Treatment", "2026-09-11": "Treatment", "2026-09-13": "Treatment", "2026-09-15": "Treatment"
+          },
+          "ar-san_juan": {
+            "2026-09-02": "Control", "2026-09-04": "Control", "2026-09-06": "Control", "2026-09-08": "Control", "2026-09-10": "Control", "2026-09-12": "Control", "2026-09-14": "Control",
+            "2026-09-03": "Treatment", "2026-09-05": "Treatment", "2026-09-07": "Treatment", "2026-09-09": "Treatment", "2026-09-11": "Treatment", "2026-09-13": "Treatment", "2026-09-15": "Treatment"
+          },
+          "ar-san_luis": {
+            "2026-09-03": "Control", "2026-09-05": "Control", "2026-09-07": "Control", "2026-09-09": "Control", "2026-09-11": "Control", "2026-09-13": "Control", "2026-09-15": "Control",
+            "2026-09-02": "Treatment", "2026-09-04": "Treatment", "2026-09-06": "Treatment", "2026-09-08": "Treatment", "2026-09-10": "Treatment", "2026-09-12": "Treatment", "2026-09-14": "Treatment"
+          },
+          "ar-san_nicolas_de_los_arroyos": {
+            "2026-09-02": "Control", "2026-09-04": "Control", "2026-09-06": "Control", "2026-09-08": "Control", "2026-09-10": "Control", "2026-09-12": "Control", "2026-09-14": "Control",
+            "2026-09-03": "Treatment", "2026-09-05": "Treatment", "2026-09-07": "Treatment", "2026-09-09": "Treatment", "2026-09-11": "Treatment", "2026-09-13": "Treatment", "2026-09-15": "Treatment"
+          },
+          "ar-san_rafael": {
+            "2026-09-02": "Control", "2026-09-04": "Control", "2026-09-06": "Control", "2026-09-08": "Control", "2026-09-10": "Control", "2026-09-12": "Control", "2026-09-14": "Control",
+            "2026-09-03": "Treatment", "2026-09-05": "Treatment", "2026-09-07": "Treatment", "2026-09-09": "Treatment", "2026-09-11": "Treatment", "2026-09-13": "Treatment", "2026-09-15": "Treatment"
+          },
+          "ar-san_salvador_de_jujuy": {
+            "2026-09-03": "Control", "2026-09-05": "Control", "2026-09-07": "Control", "2026-09-09": "Control", "2026-09-11": "Control", "2026-09-13": "Control", "2026-09-15": "Control",
+            "2026-09-02": "Treatment", "2026-09-04": "Treatment", "2026-09-06": "Treatment", "2026-09-08": "Treatment", "2026-09-10": "Treatment", "2026-09-12": "Treatment", "2026-09-14": "Treatment"
+          },
+          "ar-santa_fe": {
+            "2026-09-03": "Control", "2026-09-05": "Control", "2026-09-07": "Control", "2026-09-09": "Control", "2026-09-11": "Control", "2026-09-13": "Control", "2026-09-15": "Control",
+            "2026-09-02": "Treatment", "2026-09-04": "Treatment", "2026-09-06": "Treatment", "2026-09-08": "Treatment", "2026-09-10": "Treatment", "2026-09-12": "Treatment", "2026-09-14": "Treatment"
+          },
+          "ar-santa_rosa": {
+            "2026-09-02": "Control", "2026-09-04": "Control", "2026-09-06": "Control", "2026-09-08": "Control", "2026-09-10": "Control", "2026-09-12": "Control", "2026-09-14": "Control",
+            "2026-09-03": "Treatment", "2026-09-05": "Treatment", "2026-09-07": "Treatment", "2026-09-09": "Treatment", "2026-09-11": "Treatment", "2026-09-13": "Treatment", "2026-09-15": "Treatment"
+          },
+          "ar-santiago_del_estero": {
+            "2026-09-02": "Control", "2026-09-04": "Control", "2026-09-06": "Control", "2026-09-08": "Control", "2026-09-10": "Control", "2026-09-12": "Control", "2026-09-14": "Control",
+            "2026-09-03": "Treatment", "2026-09-05": "Treatment", "2026-09-07": "Treatment", "2026-09-09": "Treatment", "2026-09-11": "Treatment", "2026-09-13": "Treatment", "2026-09-15": "Treatment"
+          },
+          "ar-santo_tome": {
+            "2026-09-03": "Control", "2026-09-05": "Control", "2026-09-07": "Control", "2026-09-09": "Control", "2026-09-11": "Control", "2026-09-13": "Control", "2026-09-15": "Control",
+            "2026-09-02": "Treatment", "2026-09-04": "Treatment", "2026-09-06": "Treatment", "2026-09-08": "Treatment", "2026-09-10": "Treatment", "2026-09-12": "Treatment", "2026-09-14": "Treatment"
+          },
+          "ar-tandil": {
+            "2026-09-02": "Control", "2026-09-04": "Control", "2026-09-06": "Control", "2026-09-08": "Control", "2026-09-10": "Control", "2026-09-12": "Control", "2026-09-14": "Control",
+            "2026-09-03": "Treatment", "2026-09-05": "Treatment", "2026-09-07": "Treatment", "2026-09-09": "Treatment", "2026-09-11": "Treatment", "2026-09-13": "Treatment", "2026-09-15": "Treatment"
+          },
+          "ar-trelew": {
+            "2026-09-03": "Control", "2026-09-05": "Control", "2026-09-07": "Control", "2026-09-09": "Control", "2026-09-11": "Control", "2026-09-13": "Control", "2026-09-15": "Control",
+            "2026-09-02": "Treatment", "2026-09-04": "Treatment", "2026-09-06": "Treatment", "2026-09-08": "Treatment", "2026-09-10": "Treatment", "2026-09-12": "Treatment", "2026-09-14": "Treatment"
+          },
+          "ar-tucuman": {
+            "2026-09-02": "Control", "2026-09-04": "Control", "2026-09-06": "Control", "2026-09-08": "Control", "2026-09-10": "Control", "2026-09-12": "Control", "2026-09-14": "Control",
+            "2026-09-03": "Treatment", "2026-09-05": "Treatment", "2026-09-07": "Treatment", "2026-09-09": "Treatment", "2026-09-11": "Treatment", "2026-09-13": "Treatment", "2026-09-15": "Treatment"
+          },
+          "ar-ushuaia": {
+            "2026-09-03": "Control", "2026-09-05": "Control", "2026-09-07": "Control", "2026-09-09": "Control", "2026-09-11": "Control", "2026-09-13": "Control", "2026-09-15": "Control",
+            "2026-09-02": "Treatment", "2026-09-04": "Treatment", "2026-09-06": "Treatment", "2026-09-08": "Treatment", "2026-09-10": "Treatment", "2026-09-12": "Treatment", "2026-09-14": "Treatment"
+          },
+          "ar-venado_tuerto": {
+            "2026-09-02": "Control", "2026-09-04": "Control", "2026-09-06": "Control", "2026-09-08": "Control", "2026-09-10": "Control", "2026-09-12": "Control", "2026-09-14": "Control",
+            "2026-09-03": "Treatment", "2026-09-05": "Treatment", "2026-09-07": "Treatment", "2026-09-09": "Treatment", "2026-09-11": "Treatment", "2026-09-13": "Treatment", "2026-09-15": "Treatment"
+          },
+          "ar-Viedma": {
+            "2026-09-03": "Control", "2026-09-05": "Control", "2026-09-07": "Control", "2026-09-09": "Control", "2026-09-11": "Control", "2026-09-13": "Control", "2026-09-15": "Control",
+            "2026-09-02": "Treatment", "2026-09-04": "Treatment", "2026-09-06": "Treatment", "2026-09-08": "Treatment", "2026-09-10": "Treatment", "2026-09-12": "Treatment", "2026-09-14": "Treatment"
+          },
+          "ar-villa_maria": {
+            "2026-09-02": "Control", "2026-09-04": "Control", "2026-09-06": "Control", "2026-09-08": "Control", "2026-09-10": "Control", "2026-09-12": "Control", "2026-09-14": "Control",
+            "2026-09-03": "Treatment", "2026-09-05": "Treatment", "2026-09-07": "Treatment", "2026-09-09": "Treatment", "2026-09-11": "Treatment", "2026-09-13": "Treatment", "2026-09-15": "Treatment"
+          },
+          "ar-villa_mercedes": {
+            "2026-09-03": "Control", "2026-09-05": "Control", "2026-09-07": "Control", "2026-09-09": "Control", "2026-09-11": "Control", "2026-09-13": "Control", "2026-09-15": "Control",
+            "2026-09-02": "Treatment", "2026-09-04": "Treatment", "2026-09-06": "Treatment", "2026-09-08": "Treatment", "2026-09-10": "Treatment", "2026-09-12": "Treatment", "2026-09-14": "Treatment"
+          },
+          "ar-Zarate_Campana": {
+            "2026-09-02": "Control", "2026-09-04": "Control", "2026-09-06": "Control", "2026-09-08": "Control", "2026-09-10": "Control", "2026-09-12": "Control", "2026-09-14": "Control",
+            "2026-09-03": "Treatment", "2026-09-05": "Treatment", "2026-09-07": "Treatment", "2026-09-09": "Treatment", "2026-09-11": "Treatment", "2026-09-13": "Treatment", "2026-09-15": "Treatment"
+          }
+        };
+
+        // DRAG & DROP OFF-LINE LOGIC
+        const dropzone = document.getElementById('dropzone');
+        const fileInput = document.getElementById('fileInput');
+
+        dropzone.addEventListener('click', () => fileInput.click());
+        dropzone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropzone.classList.add('dragover');
+        });
+        dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
+        dropzone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropzone.classList.remove('dragover');
+            if (e.dataTransfer.files.length) {
+                processFile(e.dataTransfer.files[0]);
+            }
+        });
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length) {
+                processFile(e.target.files[0]);
+            }
+        });
+
+        function resetDashboard() {
+            csvData = null;
+            document.getElementById('dashboard-results').classList.add('hidden');
+            document.getElementById('upload-container').classList.remove('hidden');
+            fileInput.value = '';
+            document.getElementById('last-loaded-date-header').classList.add('hidden');
+        }
+
+        function processFile(file) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    const firstSheetName = workbook.SheetNames[0];
+                    const sheet = workbook.Sheets[firstSheetName];
+                    const rawJson = XLSX.utils.sheet_to_json(sheet);
+                    
+                    parseBigQueryCSV(rawJson);
+                } catch (err) {
+                    alert('Error al leer el archivo (asegúrate de que es un CSV o Excel válido): ' + err.message);
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        // NORMALIZADOR DE FECHA ABSOLUTO (SOPORTA ISO, SLASHES ESPAÑOL/USA, SERIAL EXCEL)
+        function normalizeDateStr(val) {
+            if (val === undefined || val === null || val === '') return '';
+            
+            // Si es un número (formato serial de Excel, ej: 46267)
+            if (typeof val === 'number') {
+                const date = new Date((val - 25569) * 86400 * 1000);
+                return formatDateToYYYYMMDD(date);
+            }
+            
+            let str = val.toString().trim().split(' ')[0].split('T')[0];
+            
+            // Formato estándar YYYY-MM-DD
+            if (str.match(/^\d{4}-\d{2}-\d{2}$/)) {
+                return str;
+            }
+            
+            // Formatos con barras "/" (ej: DD/MM/YYYY o MM/DD/YYYY)
+            if (str.includes('/')) {
+                const parts = str.split('/');
+                if (parts.length === 3) {
+                    if (parts[2].length === 4) { // DD/MM/YYYY o MM/DD/YYYY
+                        const year = parts[2];
+                        const month = parts[1].padStart(2, '0');
+                        const day = parts[0].padStart(2, '0');
+                        return `${year}-${month}-${day}`;
+                    } else if (parts[0].length === 4) { // YYYY/MM/DD
+                        const year = parts[0];
+                        const month = parts[1].padStart(2, '0');
+                        const day = parts[2].padStart(2, '0');
+                        return `${year}-${month}-${day}`;
+                    }
+                }
+            }
+            
+            // Intento genérico por JS Date
+            try {
+                const d = new Date(str);
+                if (!isNaN(d.getTime())) {
+                    return formatDateToYYYYMMDD(d);
+                }
+            } catch (e) {}
+            
+            return str;
+        }
+
+        function formatDateToYYYYMMDD(d) {
+            const year = d.getFullYear();
+            const month = (d.getMonth() + 1).toString().padStart(2, '0');
+            const day = d.getDate().toString().padStart(2, '0');
+            return `${year}-${month}-${day}`;
+        }
+
+        // PARSEADOR COMPLETAMENTE TOLERANTE A FORMATOS DE FECHA Y NULOS
+        function parseBigQueryCSV(data) {
+            try {
+                if (!data || data.length === 0) {
+                    alert('El archivo cargado está vacío.');
+                    return;
+                }
+
+                // Detectar si el archivo viene agrupado o individual granular
+                const firstRow = data[0];
+                const keys = Object.keys(firstRow);
+                
+                // Inspección case-insensitive de columnas
+                const hasFecha = keys.some(k => { const l = k.toLowerCase(); return l === 'fecha' || l === 'dt' || l === 'created_date_local' || l === 'created_date' || l === 'date'; });
+                const hasFleet = keys.some(k => { const l = k.toLowerCase(); return l === 'fleet_id' || l === 'fleet' || l === 'flota'; });
+                
+                const isAggregated = keys.some(k => {
+                    const l = k.toLowerCase().trim();
+                    return l.includes('orders_count') || l.includes('_sum') || l.includes('sum_');
+                });
+
+                if (!hasFecha || !hasFleet) {
+                    alert('Error: El archivo debe contener columnas de fecha (ej: "fecha", "dt") y flota (ej: "fleet_id", "fleet"). Columnas detectadas: ' + keys.join(', '));
+                    return;
+                }
+
+                // Helper para obtener valores sin importar mayúsculas/minúsculas ni espacios
+                function getVal(row, possibleKeys, defaultVal = 0) {
+                    for (const key of possibleKeys) {
+                        const foundKey = Object.keys(row).find(k => k.toLowerCase().trim() === key.toLowerCase().trim());
+                        if (foundKey !== undefined) {
+                            const val = row[foundKey];
+                            if (val !== undefined && val !== null && val !== '') {
+                                return val;
+                            }
+                        }
+                    }
+                    return defaultVal;
+                }
+
+                // Helper para limpiar números con separadores regionales de miles/decimales y símbolos de moneda
+                function cleanNum(val) {
+                    if (val === undefined || val === null || val === '') return 0;
+                    if (typeof val === 'number') return val;
+                    let str = val.toString().trim().replace(/[\$\s]/g, '');
+                    if (str.includes(',') && !str.includes('.')) { // Ej: "1250,50" -> "1250.50"
+                        str = str.replace(',', '.');
+                    } else if (str.includes(',') && str.includes('.')) { // Ej: "1,250.50" -> "1250.50"
+                        str = str.replace(/,/g, '');
+                    }
+                    const parsed = parseFloat(str);
+                    return isNaN(parsed) || !isFinite(parsed) ? 0 : parsed;
+                }
+
+                // Estandarizar mapeo de campos
+                csvData = data.map(r => {
+                    const rawFecha = getVal(r, ['fecha', 'dt', 'created_date_local', 'created_date', 'date'], '');
+                    const cleanFecha = normalizeDateStr(rawFecha);
+
+                    const fleet_id = getVal(r, ['fleet_id', 'fleet', 'flota'], '').toString().trim();
+                    const vertical = getVal(r, ['vertical', 'vertical_type', 'vertical_name'], '').toString().toUpperCase().trim();
+                    const md = cleanNum(getVal(r, ['mean_delay_zona_min', 'md', 'mean_delay'], 0));
+
+                    if (isAggregated) {
+                        const qty = cleanNum(getVal(r, ['orders_count', 'orders', 'qty', 'count'], 1));
+                        const puVal = cleanNum(getVal(r, ['pickup_distance_sum', 'pickup_distance', 'pu_distance', 'pu_sum'], 0));
+                        const doVal = cleanNum(getVal(r, ['dropoff_distance_sum', 'dropoff_distance', 'do_distance', 'do_sum'], 0));
+                        const totVal = getVal(r, ['total_distance_sum', 'total_distance', 'tot_distance', 'tot_sum'], null) !== null 
+                            ? cleanNum(getVal(r, ['total_distance_sum', 'total_distance', 'tot_distance', 'tot_sum'], 0)) 
+                            : (puVal + doVal);
+                        return {
+                            fecha: cleanFecha,
+                            fleet_id: fleet_id,
+                            vertical: vertical,
+                            md: md,
+                            normalized_group: {
+                                qty: qty,
+                                dt: cleanNum(getVal(r, ['delivery_time_sum', 'delivery_time', 'dt_sum'], 0)),
+                                seamless: cleanNum(getVal(r, ['seamless_sum', 'seamless', 'seamless_orders'], 0)),
+                                late: cleanNum(getVal(r, ['late_10_sum', 'late_10', 'late_sum'], 0)),
+                                stacked: cleanNum(getVal(r, ['stacked_sum', 'stacked', 'stacked_orders'], 0)),
+                                pu: puVal,
+                                do: doVal,
+                                tot: totVal,
+                                c_base: cleanNum(getVal(r, ['cpo_base_sum', 'cpo_base'], 0)),
+                                c_pu: cleanNum(getVal(r, ['cpo_dist_pu_sum', 'cpo_dist_pu'], 0)),
+                                c_do: cleanNum(getVal(r, ['cpo_dist_do_sum', 'cpo_dist_do'], 0)),
+                                c_tot: cleanNum(getVal(r, ['cpo_total_sum', 'cpo_total', 'cpo_tot'], 0))
+                            }
+                        };
+                    } else {
+                        // Formato granular individual
+                        const isStacked = r.is_stacked === true || r.is_stacked === 1 || r.is_stacked === 'true' || r.is_stacked === '1' || getVal(r, ['is_stacked'], '') === 1;
+                        const isLate = r.ol10 === true || r.ol10 === 1 || r.ol10 === 'true' || r.ol10 === '1' || r.is_order_late_10 === true || r.is_order_late_10 === 1 || r.is_order_late_10 === 'true';
+                        const isSeamless = r.seamless === true || r.seamless === 1 || r.seamless === 'true' || r.seamless === '1' || r.non_seamless === 0 || r.non_seamless === '0';
+                        
+                        const puVal = cleanNum(getVal(r, ['pickup_distance_sum', 'pickup_distance', 'pickup_distance_google'], 0));
+                        const doVal = cleanNum(getVal(r, ['dropoff_distance_sum', 'dropoff_distance', 'dropoff_distance_google'], 0));
+                        const totVal = puVal + doVal;
+                        
+                        return {
+                            fecha: cleanFecha,
+                            fleet_id: fleet_id,
+                            vertical: vertical,
+                            md: md,
+                            normalized_group: {
+                                qty: 1,
+                                dt: cleanNum(getVal(r, ['delivery_time_seconds', 'delivery_time'], 0)) / 60,
+                                seamless: isSeamless ? 1 : 0,
+                                late: isLate ? 1 : 0,
+                                stacked: isStacked ? 1 : 0,
+                                pu: puVal,
+                                do: doVal,
+                                tot: totVal,
+                                c_base: cleanNum(getVal(r, ['cpo_base'], 0)),
+                                c_pu: cleanNum(getVal(r, ['cpo_dist_pu_sum', 'cpo_dist_pu', 'basic_payment_per_km_pu_lc'], 0)),
+                                c_do: cleanNum(getVal(r, ['cpo_dist_do_sum', 'cpo_dist_do', 'basic_payment_per_km_do_lc'], 0)),
+                                c_tot: cleanNum(getVal(r, ['cpo_total_sum', 'cpo_total', 'cpo_total_lc'], 0))
+                            }
+                        };
+                    }
+                });
+
+                document.getElementById('upload-container').classList.add('hidden');
+                renderDashboard(csvData);
+
+            } catch (err) {
+                alert('Ocurrió un error parseando el archivo: ' + err.message);
+                console.error(err);
+            }
+        }
+
+        // CALCULATORS
+        function calcPctVar(tVal, cVal) {
+            if (cVal === 0) return 0;
+            return ((tVal - cVal) / cVal) * 100;
+        }
+
+        function formatPctVar(val) {
+            if (isNaN(val) || !isFinite(val)) return '0.0%';
+            const prefix = val > 0 ? '+' : '';
+            return `${prefix}${val.toFixed(1)}%`;
+        }
+
+        function formatPpVar(val) {
+            if (isNaN(val) || !isFinite(val)) return '0.0 pp';
+            const prefix = val > 0 ? '+' : '';
+            return `${prefix}${val.toFixed(1)} pp`;
+        }
+
+        function applyDeltaStyle(elId, val, invertBehavior = false) {
+            const el = document.getElementById(elId);
+            if (!el) return;
+            let isGood = invertBehavior ? val > 0 : val < 0;
+            if (Math.abs(val) < 0.001 || isNaN(val) || !isFinite(val)) {
+                el.className = "text-lg md:text-xl font-black text-peya-grayText px-1.5 py-0.5 rounded-md bg-gray-100";
+            } else if (isGood) {
+                el.className = "text-lg md:text-xl font-black text-peya-positive px-1.5 py-0.5 rounded-md bg-emerald-50";
+            } else {
+                el.className = "text-lg md:text-xl font-black text-peya-red px-1.5 py-0.5 rounded-md bg-rose-50";
+            }
+            el.innerText = invertBehavior ? formatPpVar(val) : formatPctVar(val);
+        }
+
+        // PARSEADOR DE FECHA FORMATO AGNOSTICO (SOPORTA DASHES, SLASHES, Y ORDEN ESPAÑOL/USA)
+        function getDayOfWeek(fechaStr) {
+            if (!fechaStr) return null;
+            const clean = fechaStr.toString().split(' ')[0].split('T')[0];
+            const normalized = clean.replace(/\//g, '-');
+            const parts = normalized.split('-');
+            if (parts.length < 3) return null;
+
+            let year, month, day;
+            if (parts[0].length === 4) {
+                year = parseInt(parts[0]);
+                month = parseInt(parts[1]) - 1;
+                day = parseInt(parts[2]);
+            } else if (parts[2].length === 4) {
+                year = parseInt(parts[2]);
+                month = parseInt(parts[1]) - 1;
+                day = parseInt(parts[0]);
+            } else {
+                return new Date(normalized).getDay();
+            }
+            return new Date(year, month, day).getDay();
+        }
+
+        function renderDashboard(data) {
+            document.getElementById('dashboard-results').classList.remove('hidden');
+
+            const totalStats = { t: [], c: [], l8w_t: [], l8w_c: [] };
+            const fleetStats = {};
+            const uniqueFleets = new Set();
+
+            // Mapeador insensible a mayúsculas/minúsculas para el calendario embebido
+            const NORMALIZED_CALENDAR = {};
+            Object.keys(TEST_CALENDAR).forEach(fId => {
+                const lowerFleet = fId.toLowerCase().trim();
+                NORMALIZED_CALENDAR[lowerFleet] = {};
+                Object.keys(TEST_CALENDAR[fId]).forEach(dateStr => {
+                    NORMALIZED_CALENDAR[lowerFleet][dateStr] = TEST_CALENDAR[fId][dateStr];
+                });
+            });
+
+            // Clasificación de días de la semana para control/treatment de cada flota
+            const fleetControlDOWs = {};
+            const fleetTreatmentDOWs = {};
+
+            Object.keys(TEST_CALENDAR).forEach(fId => {
+                const lowerFleet = fId.toLowerCase().trim();
+                fleetControlDOWs[lowerFleet] = new Set();
+                fleetTreatmentDOWs[lowerFleet] = new Set();
+                
+                Object.keys(TEST_CALENDAR[fId]).forEach(dateStr => {
+                    const grp = TEST_CALENDAR[fId][dateStr];
+                    const dow = getDayOfWeek(dateStr);
+                    if (dow !== null) {
+                        if (grp === 'Control') {
+                            fleetControlDOWs[lowerFleet].add(dow);
+                        } else if (grp === 'Treatment') {
+                            fleetTreatmentDOWs[lowerFleet].add(dow);
+                        }
+                    }
+                });
+            });
+
+            // Agrupamiento y etiquetado dinámico
+            data.forEach(r => {
+                const dateStr = r.fecha;
+                const fleetId = r.fleet_id;
+                uniqueFleets.add(fleetId);
+
+                const isTestPeriod = (dateStr >= '2026-09-02' && dateStr <= '2026-09-15');
+                const isBaselinePeriod = (dateStr >= '2026-07-08' && dateStr <= '2026-09-01');
+
+                const orderObj = r.normalized_group;
+                orderObj.fecha = dateStr;
+                orderObj.fleet_id = fleetId;
+                orderObj.vertical = r.vertical;
+                orderObj.md = r.md;
+
+                const cleanFleetId = fleetId.toLowerCase().trim();
+
+                if (isTestPeriod) {
+                    const group = (NORMALIZED_CALENDAR[cleanFleetId] && NORMALIZED_CALENDAR[cleanFleetId][dateStr]) ? NORMALIZED_CALENDAR[cleanFleetId][dateStr] : null;
+                    if (group === 'Control') {
+                        r.arm = 'Control';
+                        totalStats.c.push(orderObj);
+                        
+                        if (!fleetStats[fleetId]) {
+                            fleetStats[fleetId] = { fleet_id: fleetId, t: [], c: [], l8w_t: [], l8w_c: [] };
+                        }
+                        fleetStats[fleetId].c.push(orderObj);
+                    } else if (group === 'Treatment') {
+                        r.arm = 'Test';
+                        totalStats.t.push(orderObj);
+                        
+                        if (!fleetStats[fleetId]) {
+                            fleetStats[fleetId] = { fleet_id: fleetId, t: [], c: [], l8w_t: [], l8w_c: [] };
+                        }
+                        fleetStats[fleetId].t.push(orderObj);
+                    } else {
+                        r.arm = 'Excluido';
+                    }
+                } else if (isBaselinePeriod) {
+                    r.arm = 'L8W';
+                    const dow = getDayOfWeek(dateStr);
+                    if (dow !== null) {
+                        const isControlDOW = fleetControlDOWs[cleanFleetId] && fleetControlDOWs[cleanFleetId].has(dow);
+                        const isTreatmentDOW = fleetTreatmentDOWs[cleanFleetId] && fleetTreatmentDOWs[cleanFleetId].has(dow);
+                        
+                        if (!fleetStats[fleetId]) {
+                            fleetStats[fleetId] = { fleet_id: fleetId, t: [], c: [], l8w_t: [], l8w_c: [] };
+                        }
+
+                        if (isTreatmentDOW) {
+                            totalStats.l8w_t.push(orderObj);
+                            fleetStats[fleetId].l8w_t.push(orderObj);
+                        }
+                        if (isControlDOW) {
+                            totalStats.l8w_c.push(orderObj);
+                            fleetStats[fleetId].l8w_c.push(orderObj);
+                        }
+                    }
+                } else {
+                    r.arm = 'Excluido';
+                }
+            });
+
+            // 1. OBTENER LA ÚLTIMA FECHA DE TESTEO CARGADA Y MOSTRARLA
+            const testDatesInFile = data.map(r => r.fecha).filter(f => f >= '2026-09-02' && f <= '2026-09-15');
+            const maxDate = testDatesInFile.length > 0 
+                ? testDatesInFile.reduce((a, b) => a > b ? a : b) 
+                : (data.length > 0 ? data.map(r => r.fecha).reduce((a, b) => a > b ? a : b) : '');
+            
+            if (maxDate) {
+                const headerDateEl = document.getElementById('last-loaded-date-header');
+                headerDateEl.innerText = `Testeo Analizado hasta: ${normalizeDisplayDate(maxDate)}`;
+                headerDateEl.classList.remove('hidden');
+            }
+
+            // Repoblar el selector de flotas
+            const fleetSelect = document.getElementById('chart-filter-fleet');
+            fleetSelect.innerHTML = '<option value="all">Todas las Flotas</option>';
+            Array.from(uniqueFleets).sort().forEach(fId => {
+                const opt = document.createElement('option');
+                opt.value = fId;
+                opt.innerText = fId;
+                fleetSelect.appendChild(opt);
+            });
+
+            function sumQty(arr) { return arr.reduce((acc, x) => acc + x.qty, 0); }
+            function sumField(arr, field) { return arr.reduce((acc, x) => acc + x[field], 0); }
+            function avgField(arr, field) {
+                const totalQty = sumQty(arr);
+                return totalQty > 0 ? (sumField(arr, field) / totalQty) : 0;
+            }
+
+            const tcT = sumQty(totalStats.t);
+            const tcC = sumQty(totalStats.c);
+            const tcL_T = sumQty(totalStats.l8w_t);
+            const tcL_C = sumQty(totalStats.l8w_c);
+
+            document.getElementById('kpi-orders-count-text').innerText = Number(tcT + tcC + tcL_T + tcL_C).toLocaleString('es-AR');
+
+            // --- TEST VS CONTROL KPIs ---
+            const dtT = avgField(totalStats.t, 'dt');
+            const dtC = avgField(totalStats.c, 'dt');
+            applyDeltaStyle('top-var-dt-tc', calcPctVar(dtT, dtC));
+            document.getElementById('val-dt-t').innerText = dtT.toFixed(1) + ' m';
+            document.getElementById('val-dt-c').innerText = dtC.toFixed(1) + ' m';
+
+            const stackT = avgField(totalStats.t, 'stacked') * 100;
+            const stackC = avgField(totalStats.c, 'stacked') * 100;
+            applyDeltaStyle('top-var-stack-tc', stackT - stackC, true);
+            document.getElementById('val-stack-t').innerText = stackT.toFixed(1) + '%';
+            document.getElementById('val-stack-c').innerText = stackC.toFixed(1) + '%';
+
+            const puT = avgField(totalStats.t, 'pu');
+            const puC = avgField(totalStats.c, 'pu');
+            applyDeltaStyle('top-var-pu-tc', calcPctVar(puT, puC));
+            document.getElementById('val-pu-t').innerText = puT.toFixed(3) + ' km';
+            document.getElementById('val-pu-c').innerText = puC.toFixed(3) + ' km';
+
+            const doT = avgField(totalStats.t, 'do');
+            const doC = avgField(totalStats.c, 'do');
+            applyDeltaStyle('top-var-do-tc', calcPctVar(doT, doC));
+            document.getElementById('val-do-t').innerText = doT.toFixed(3) + ' km';
+            document.getElementById('val-do-c').innerText = doC.toFixed(3) + ' km';
+
+            const seamT = avgField(totalStats.t, 'seamless') * 100;
+            const seamC = avgField(totalStats.c, 'seamless') * 100;
+            applyDeltaStyle('top-var-seam-tc', seamT - seamC, true);
+            document.getElementById('val-seam-t').innerText = seamT.toFixed(1) + '%';
+            document.getElementById('val-seam-c').innerText = seamC.toFixed(1) + '%';
+
+            const cpoT = avgField(totalStats.t, 'c_tot');
+            const cpoC = avgField(totalStats.c, 'c_tot');
+            applyDeltaStyle('top-var-cpotot-tc', calcPctVar(cpoT, cpoC));
+            document.getElementById('val-cpotot-t').innerText = '$' + cpoT.toFixed(1);
+            document.getElementById('val-cpotot-c').innerText = '$' + cpoC.toFixed(1);
+
+            // --- TEST VS L8W KPIs (Treatment vs same DOWs in L8W) ---
+            const dtL = avgField(totalStats.l8w_t, 'dt');
+            applyDeltaStyle('top-var-dt-tl4w', calcPctVar(dtT, dtL));
+            document.getElementById('val-dt-t2').innerText = dtT.toFixed(1) + ' m';
+            document.getElementById('val-dt-l4w').innerText = dtL.toFixed(1) + ' m';
+
+            const stackL = avgField(totalStats.l8w_t, 'stacked') * 100;
+            applyDeltaStyle('top-var-stack-tl4w', stackT - stackL, true);
+            document.getElementById('val-stack-t2').innerText = stackT.toFixed(1) + '%';
+            document.getElementById('val-stack-l4w').innerText = stackL.toFixed(1) + '%';
+
+            const puL = avgField(totalStats.l8w_t, 'pu');
+            applyDeltaStyle('top-var-pu-tl4w', calcPctVar(puT, puL));
+            document.getElementById('val-pu-t2').innerText = puT.toFixed(3) + ' km';
+            document.getElementById('val-pu-l4w').innerText = puL.toFixed(3) + ' km';
+
+            const doL = avgField(totalStats.l8w_t, 'do');
+            applyDeltaStyle('top-var-do-tl4w', calcPctVar(doT, doL));
+            document.getElementById('val-do-t2').innerText = doT.toFixed(3) + ' km';
+            document.getElementById('val-do-l4w').innerText = doL.toFixed(3) + ' km';
+
+            const seamL = avgField(totalStats.l8w_t, 'seamless') * 100;
+            applyDeltaStyle('top-var-seam-tl4w', seamT - seamL, true);
+            document.getElementById('val-seam-t2').innerText = seamT.toFixed(1) + '%';
+            document.getElementById('val-seam-l4w').innerText = seamL.toFixed(1) + '%';
+
+            const cpoL = avgField(totalStats.l8w_t, 'c_tot');
+            applyDeltaStyle('top-var-cpotot-tl4w', calcPctVar(cpoT, cpoL));
+            document.getElementById('val-cpotot-t2').innerText = '$' + cpoT.toFixed(1);
+            document.getElementById('val-cpotot-l4w').innerText = '$' + cpoL.toFixed(1);
+
+            updateBucketChartsFiltered();
+
+            // --- FLEET TABLE (Test vs Control) ---
+            const tbody = document.getElementById('fleet-table-body');
+            tbody.innerHTML = '';
+            const fleetRowsData = [];
+
+            Object.values(fleetStats).forEach(f => {
+                if (sumQty(f.t) + sumQty(f.c) < 5) return;
+                
+                const fStackT = avgField(f.t, 'stacked') * 100;
+                const fStackC = avgField(f.c, 'stacked') * 100;
+
+                fleetRowsData.push({
+                    fleet_id: f.fleet_id,
+                    orders_t: sumQty(f.t),
+                    orders_c: sumQty(f.c),
+                    varDt: calcPctVar(avgField(f.t, 'dt'), avgField(f.c, 'dt')),
+                    varSeam: (avgField(f.t, 'seamless') - avgField(f.c, 'seamless')) * 100,
+                    varLate: (avgField(f.t, 'late') - avgField(f.c, 'late')) * 100,
+                    varPu: calcPctVar(avgField(f.t, 'pu'), avgField(f.c, 'pu')),
+                    varDo: calcPctVar(avgField(f.t, 'do'), avgField(f.c, 'do')),
+                    varStack: fStackT - fStackC
+                });
+            });
+
+            // Ordenar por Var % Dist DO descendente
+            fleetRowsData.sort((a, b) => b.varDo - a.varDo);
+
+            fleetRowsData.forEach(f => {
+                const row = document.createElement('tr');
+                row.className = "hover:bg-[#F8F9FB] transition text-xs";
+                const c_dt = f.varDt < 0 ? 'text-peya-positive' : 'text-peya-red';
+                const c_seam = f.varSeam > 0 ? 'text-peya-positive' : 'text-peya-red';
+                const c_late = f.varLate < 0 ? 'text-peya-positive' : 'text-peya-red';
+                const c_pu = f.varPu < 0 ? 'text-peya-positive' : 'text-peya-red';
+                const c_do = f.varDo < 0 ? 'text-peya-positive' : 'text-peya-red';
+                const c_stack = f.varStack < 0 ? 'text-peya-positive' : 'text-peya-red';
+
+                row.innerHTML = `
+                    <td class="p-3 font-bold text-peya-navy">${f.fleet_id}</td>
+                    <td class="p-3 text-right font-semibold"><span class="text-peya-red">${f.orders_t}</span>/<span class="text-peya-info">${f.orders_c}</span></td>
+                    <td class="p-3 text-right font-bold ${c_dt}">${formatPctVar(f.varDt)}</td>
+                    <td class="p-3 text-right font-bold ${c_seam}">${formatPpVar(f.varSeam)}</td>
+                    <td class="p-3 text-right font-bold ${c_late}">${formatPpVar(f.varLate)}</td>
+                    <td class="p-3 text-right font-bold ${c_pu}">${formatPctVar(f.varPu)}</td>
+                    <td class="p-3 text-right font-bold ${c_do}">${formatPctVar(f.varDo)}</td>
+                    <td class="p-3 text-right font-bold ${c_stack}">${formatPpVar(f.varStack)}</td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
+
+        // Helper to format Date cleanly to "DD/MM/YYYY"
+        function normalizeDisplayDate(fechaStr) {
+            if (!fechaStr) return '';
+            const parts = fechaStr.split('-');
+            if (parts.length === 3) {
+                return `${parts[2]}/${parts[1]}/${parts[0]}`;
+            }
+            return fechaStr;
+        }
+
+        function updateBucketChartsFiltered() {
+            if (!csvData) return;
+            const selVert = document.getElementById('chart-filter-vertical').value;
+            const selFleet = document.getElementById('chart-filter-fleet').value;
+            
+            const filtered = csvData.filter(r => {
+                const g = r.arm;
+                if (!g || g === 'Excluido' || g === 'L8W') return false; 
+                
+                const v = r.vertical ? r.vertical.toUpperCase().trim() : '';
+                const isDMart = v === 'DARKSTORES' || v === 'DMARTS' || v === 'DMART' || v === 'DARKSTORE';
+                const isFood = v === 'RESTAURANTS' || v === 'FOOD' || v === 'RESTAURANT';
+                
+                if (selVert === 'restaurants' && !isFood) return false;
+                if (selVert === 'local_stores' && !(!isDMart && !isFood)) return false;
+                if (selVert === 'darkstores' && !isDMart) return false;
+                if (selFleet !== 'all' && r.fleet_id !== selFleet) return false;
+                return true;
+            });
+            
+            const buckets = { '0-2':{t:[],c:[]}, '2-4':{t:[],c:[]}, '4-6':{t:[],c:[]}, '6-8':{t:[],c:[]}, '8-10':{t:[],c:[]}, '10-12':{t:[],c:[]}, '12-14':{t:[],c:[]}, '14-16':{t:[],c:[]}, '16-18':{t:[],c:[]}, '18-20':{t:[],c:[]}, '20+':{t:[],c:[]} };
+            
+            filtered.forEach(r => {
+                const isT = r.arm === 'Test';
+                let b = '20+';
+                if (r.md < 2) b='0-2'; else if (r.md < 4) b='2-4'; else if (r.md < 6) b='4-6'; else if (r.md < 8) b='6-8'; else if (r.md < 10) b='8-10'; else if (r.md < 12) b='10-12'; else if (r.md < 14) b='12-14'; else if (r.md < 16) b='14-16'; else if (r.md < 18) b='16-18'; else if (r.md < 20) b='18-20';
+                if (isT) buckets[b].t.push(r.normalized_group); else buckets[b].c.push(r.normalized_group);
+            });
+            
+            function sQ(arr) { return arr.reduce((acc, x) => acc + x.qty, 0); }
+            function aF(arr, field) { const total = sQ(arr); return total > 0 ? arr.reduce((a, x) => a + x[field], 0)/total : 0; }
+            
+            const labels = ['0-2 min', '2-4 min', '4-6 min', '6-8 min', '8-10 min', '10-12 min', '12-14 min', '14-16 min', '16-18 min', '18-20 min', '20+ min'];
+            const keys = ['0-2', '2-4', '4-6', '6-8', '8-10', '10-12', '12-14', '14-16', '16-18', '18-20', '20+'];
+            
+            const totalOrdersT = filtered.filter(r => r.arm === 'Test').reduce((acc, x) => acc + x.normalized_group.qty, 0);
+            const totalOrdersC = filtered.filter(r => r.arm === 'Control').reduce((acc, x) => acc + x.normalized_group.qty, 0);
+            const totalOrders = totalOrdersT + totalOrdersC;
+
+            const dt = { puT:[], puC:[], doT:[], doC:[], dtT:[], dtC:[], seamT:[], seamC:[], stackT:[], stackC:[], shareT:[], shareC:[] };
+            keys.forEach(k => {
+                const b = buckets[k];
+                dt.puT.push(aF(b.t, 'pu')); dt.puC.push(aF(b.c, 'pu'));
+                dt.doT.push(aF(b.t, 'do')); dt.doC.push(aF(b.c, 'do'));
+                dt.dtT.push(aF(b.t, 'dt')); dt.dtC.push(aF(b.c, 'dt'));
+                dt.seamT.push(aF(b.t, 'seamless')*100); dt.seamC.push(aF(b.c, 'seamless')*100);
+                dt.stackT.push(aF(b.t, 'stacked')*100); dt.stackC.push(aF(b.c, 'stacked')*100);
+                dt.shareT.push(totalOrders > 0 ? (sQ(b.t) / totalOrders) * 100 : 0);
+                dt.shareC.push(totalOrders > 0 ? (sQ(b.c) / totalOrders) * 100 : 0);
+            });
+            
+            const m1 = document.getElementById('chart1-metric-selector').value;
+            const m2 = document.getElementById('chart2-metric-selector').value;
+
+            drawBucketCharts(labels, dt, m1, m2);
+        }
+
+        function drawBucketCharts(labels, data, metric1, metric2) {
+            // --- GRÁFICO 1 (Distancia PU y Distancia DO) ---
+            const ctx1 = document.getElementById('bucketDistanceChart').getContext('2d');
+            if (bucketCpoDistChartInstance) bucketCpoDistChartInstance.destroy();
+            
+            const datasets1 = [];
+            const showPu = (metric1 === 'both' || metric1 === 'pu');
+            const showDo = (metric1 === 'both' || metric1 === 'do');
+            
+            if (showPu) {
+                datasets1.push(
+                    { label: 'Dist PU Test (km)', data: data.puT, borderColor: '#EA044E', backgroundColor: 'transparent', borderWidth: 2.5, type: 'line', tension: 0.3, yAxisID: 'yDist', pointRadius: 3, fill: false },
+                    { label: 'Dist PU Control (km)', data: data.puC, borderColor: 'rgba(234, 4, 78, 0.5)', backgroundColor: 'transparent', borderWidth: 2, borderDash: [5, 5], type: 'line', tension: 0.3, yAxisID: 'yDist', pointRadius: 3, fill: false }
+                );
+            }
+            if (showDo) {
+                datasets1.push(
+                    { label: 'Dist DO Test (km)', data: data.doT, borderColor: '#04ADDF', backgroundColor: 'transparent', borderWidth: 2.5, type: 'line', tension: 0.3, yAxisID: 'yDist', pointRadius: 3, fill: false },
+                    { label: 'Dist DO Control (km)', data: data.doC, borderColor: 'rgba(4, 173, 223, 0.5)', backgroundColor: 'transparent', borderWidth: 2, borderDash: [5, 5], type: 'line', tension: 0.3, yAxisID: 'yDist', pointRadius: 3, fill: false }
+                );
+            }
+            
+            // Agregar siempre la variable share de órdenes (fija, no opcional)
+            datasets1.push(
+                { label: 'Share Órdenes Test (%)', data: data.shareT, borderColor: '#F59E0B', backgroundColor: 'rgba(245, 158, 11, 0.05)', borderWidth: 2.5, type: 'line', tension: 0.3, yAxisID: 'yShare', pointRadius: 3, fill: false },
+                { label: 'Share Órdenes Control (%)', data: data.shareC, borderColor: 'rgba(245, 158, 11, 0.5)', backgroundColor: 'transparent', borderWidth: 2, borderDash: [5, 5], type: 'line', tension: 0.3, yAxisID: 'yShare', pointRadius: 3, fill: false }
+            );
+
+            bucketCpoDistChartInstance = new Chart(ctx1, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: datasets1
+                },
+                options: { 
+                    responsive: true, 
+                    maintainAspectRatio: false, 
+                    plugins: { 
+                        legend: { position: 'top', labels: { font: { family: 'Outfit', size: 9, weight: 'bold' } } } 
+                    },
+                    scales: {
+                        x: { grid: { display: false }, ticks: { font: { family: 'Outfit', size: 8 } } },
+                        yDist: { type: 'linear', display: showPu || showDo, position: 'left', title: { display: true, text: 'Distancia Promedio (km)', font: { family: 'Outfit', weight: 'bold', size: 9 } } },
+                        yShare: { type: 'linear', display: true, position: 'right', title: { display: true, text: 'Share de Órdenes (%)', font: { family: 'Outfit', weight: 'bold', size: 9 } }, grid: { display: false }, min: 0 }
+                    }
+                }
+            });
+
+            // --- GRÁFICO 2 (Delivery Time y Seamless) ---
+            const ctx2 = document.getElementById('bucketQualityChart').getContext('2d');
+            if (bucketQualityChartInstance) bucketQualityChartInstance.destroy();
+            
+            const datasets2 = [];
+            const showDt = (metric2 === 'both' || metric2 === 'dt');
+            const showSeam = (metric2 === 'both' || metric2 === 'seamless');
+            const showBoth = (metric2 === 'both');
+            const showStacked = (metric2 === 'both' || metric2 === 'stacked');
+            
+            if (showDt) {
+                datasets2.push(
+                    { label: 'DT Test (min)', data: data.dtT, borderColor: '#100423', backgroundColor: 'transparent', borderWidth: 2.5, type: 'line', tension: 0.3, yAxisID: 'yTime', pointRadius: 3, fill: false },
+                    { label: 'DT Control (min)', data: data.dtC, borderColor: 'rgba(16, 4, 35, 0.5)', backgroundColor: 'transparent', borderWidth: 2, borderDash: [5, 5], type: 'line', tension: 0.3, yAxisID: 'yTime', pointRadius: 3, fill: false }
+                );
+            }
+            if (showSeam) {
+                datasets2.push(
+                    { label: 'Seamless Test (%)', data: data.seamT, borderColor: '#2DE1A0', backgroundColor: 'transparent', borderWidth: 2.5, type: 'line', tension: 0.3, yAxisID: 'yPct', pointRadius: 3, fill: false },
+                    { label: 'Seamless Control (%)', data: data.seamC, borderColor: 'rgba(45, 225, 160, 0.5)', backgroundColor: 'transparent', borderWidth: 2, borderDash: [5, 5], type: 'line', tension: 0.3, yAxisID: 'yPct', pointRadius: 3, fill: false }
+                );
+            }
+            if (showStacked) {
+                datasets2.push(
+                    { label: 'Stacking Test (%)', data: data.stackT, borderColor: '#A855F7', backgroundColor: 'transparent', borderWidth: 2.5, type: 'line', tension: 0.3, yAxisID: 'yPct', pointRadius: 3, fill: false },
+                    { label: 'Stacking Control (%)', data: data.stackC, borderColor: 'rgba(168, 85, 247, 0.5)', backgroundColor: 'transparent', borderWidth: 2, borderDash: [5, 5], type: 'line', tension: 0.3, yAxisID: 'yPct', pointRadius: 3, fill: false }
+                );
+            }
+            
+            // Agregar siempre la variable share de órdenes (fija, no opcional)
+            datasets2.push(
+                { label: 'Share Órdenes Test (%)', data: data.shareT, borderColor: '#F59E0B', backgroundColor: 'rgba(245, 158, 11, 0.05)', borderWidth: 2.5, type: 'line', tension: 0.3, yAxisID: 'yPct', pointRadius: 3, fill: false },
+                { label: 'Share Órdenes Control (%)', data: data.shareC, borderColor: 'rgba(245, 158, 11, 0.5)', backgroundColor: 'transparent', borderWidth: 2, borderDash: [5, 5], type: 'line', tension: 0.3, yAxisID: 'yPct', pointRadius: 3, fill: false }
+            );
+
+            bucketQualityChartInstance = new Chart(ctx2, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: datasets2
+                },
+                options: { 
+                    responsive: true, 
+                    maintainAspectRatio: false, 
+                    plugins: { 
+                        legend: { position: 'top', labels: { font: { family: 'Outfit', size: 9, weight: 'bold' } } } 
+                    },
+                    scales: {
+                        x: { grid: { display: false }, ticks: { font: { family: 'Outfit', size: 8 } } },
+                        yTime: { type: 'linear', display: showDt, position: 'left', title: { display: true, text: 'Delivery Time Promedio (min)', font: { family: 'Outfit', weight: 'bold', size: 9 } } },
+                        yPct: { type: 'linear', display: showSeam || showStacked, position: 'right', title: { display: true, text: 'Seamless / Stacking / Share (%)', font: { family: 'Outfit', weight: 'bold', size: 9 } }, grid: { display: !showDt }, min: 0, max: 100 }
+                    }
+                }
+            });
+        }
+
+        // FUNCIONALIDAD PREMIUM DE CONGELADO CLIENT-SIDE (GENERA HTML AUTOCONTENIDO CON LA DATA ACTUAL)
+        function freezeAndDownload() {
+            if (!csvData) return;
+            
+            let html = document.documentElement.outerHTML;
+            const dataJson = JSON.stringify(csvData);
+            
+            // Reemplaza la inicialización vacía con la sábana de datos actual
+            html = html.replace('let csvData = null;', `let csvData = ${dataJson};`);
+            
+            const blob = new Blob([html], { type: 'text/html' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = 'Reporte_Real_DO_Distances_CONGELADO.html';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+        }
+
+        // AUTO-DETECCION DE REPORTE CONGELADO AL CARGAR LA PAGINA
+        window.addEventListener('DOMContentLoaded', () => {
+            if (csvData && csvData.length > 0) {
+                document.getElementById('upload-container').classList.add('hidden');
+                renderDashboard(csvData);
+            }
+        });
+    </script>
+</body>
+</html>

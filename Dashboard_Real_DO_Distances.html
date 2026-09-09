@@ -329,6 +329,13 @@
                                 <option value="all">Todas las Flotas</option>
                             </select>
                         </div>
+                        <div>
+                            <span class="block text-[10px] font-black text-peya-grayText uppercase tracking-wider mb-1">Visualización</span>
+                            <label class="inline-flex items-center gap-2 cursor-pointer bg-peya-bg border border-[#E0E0E5] rounded-xl text-xs px-3 py-1.5 font-bold text-peya-navy select-none">
+                                <input type="checkbox" id="chart-show-share" onchange="updateBucketChartsFiltered()" checked class="w-3.5 h-3.5 accent-peya-red rounded cursor-pointer">
+                                <span>Mostrar Share %</span>
+                            </label>
+                        </div>
                     </div>
                 </div>
                 
@@ -1254,6 +1261,7 @@
         }
 
         function drawBucketCharts(labels, data, metric1, metric2) {
+            const showShare = document.getElementById('chart-show-share').checked;
             // --- GRÁFICO 1 (Distancia PU y Distancia DO) ---
             const ctx1 = document.getElementById('bucketDistanceChart').getContext('2d');
             if (bucketCpoDistChartInstance) bucketCpoDistChartInstance.destroy();
@@ -1275,11 +1283,13 @@
                 );
             }
             
-            // Agregar siempre la variable share de órdenes (fija, no opcional)
-            datasets1.push(
-                { label: 'Share Órdenes Test (%)', data: data.shareT, borderColor: '#F59E0B', backgroundColor: 'rgba(245, 158, 11, 0.05)', borderWidth: 2.5, type: 'line', tension: 0.3, yAxisID: 'yShare', pointRadius: 3, fill: false },
-                { label: 'Share Órdenes Control (%)', data: data.shareC, borderColor: 'rgba(245, 158, 11, 0.5)', backgroundColor: 'transparent', borderWidth: 2, borderDash: [5, 5], type: 'line', tension: 0.3, yAxisID: 'yShare', pointRadius: 3, fill: false }
-            );
+            // Agregar share de órdenes si el checkbox está marcado
+            if (showShare) {
+                datasets1.push(
+                    { label: 'Share Órdenes Test (%)', data: data.shareT, borderColor: '#F59E0B', backgroundColor: 'rgba(245, 158, 11, 0.05)', borderWidth: 2.5, type: 'line', tension: 0.3, yAxisID: 'yShare', pointRadius: 3, fill: false },
+                    { label: 'Share Órdenes Control (%)', data: data.shareC, borderColor: 'rgba(245, 158, 11, 0.5)', backgroundColor: 'transparent', borderWidth: 2, borderDash: [5, 5], type: 'line', tension: 0.3, yAxisID: 'yShare', pointRadius: 3, fill: false }
+                );
+            }
 
             bucketCpoDistChartInstance = new Chart(ctx1, {
                 type: 'line',
@@ -1296,7 +1306,7 @@
                     scales: {
                         x: { grid: { display: false }, ticks: { font: { family: 'Outfit', size: 8 } } },
                         yDist: { type: 'linear', display: showPu || showDo, position: 'left', title: { display: true, text: 'Distancia Promedio (km)', font: { family: 'Outfit', weight: 'bold', size: 9 } } },
-                        yShare: { type: 'linear', display: true, position: 'right', title: { display: true, text: 'Share de Órdenes (%)', font: { family: 'Outfit', weight: 'bold', size: 9 } }, grid: { display: false }, min: 0 }
+                        yShare: { type: 'linear', display: showShare, position: 'right', title: { display: true, text: 'Share de Órdenes (%)', font: { family: 'Outfit', weight: 'bold', size: 9 } }, grid: { display: false }, min: 0 }
                     }
                 }
             });
@@ -1330,11 +1340,13 @@
                 );
             }
             
-            // Agregar siempre la variable share de órdenes (fija, no opcional)
-            datasets2.push(
-                { label: 'Share Órdenes Test (%)', data: data.shareT, borderColor: '#F59E0B', backgroundColor: 'rgba(245, 158, 11, 0.05)', borderWidth: 2.5, type: 'line', tension: 0.3, yAxisID: 'yPct', pointRadius: 3, fill: false },
-                { label: 'Share Órdenes Control (%)', data: data.shareC, borderColor: 'rgba(245, 158, 11, 0.5)', backgroundColor: 'transparent', borderWidth: 2, borderDash: [5, 5], type: 'line', tension: 0.3, yAxisID: 'yPct', pointRadius: 3, fill: false }
-            );
+            // Agregar share de órdenes si el checkbox está marcado
+            if (showShare) {
+                datasets2.push(
+                    { label: 'Share Órdenes Test (%)', data: data.shareT, borderColor: '#F59E0B', backgroundColor: 'rgba(245, 158, 11, 0.05)', borderWidth: 2.5, type: 'line', tension: 0.3, yAxisID: 'yPct', pointRadius: 3, fill: false },
+                    { label: 'Share Órdenes Control (%)', data: data.shareC, borderColor: 'rgba(245, 158, 11, 0.5)', backgroundColor: 'transparent', borderWidth: 2, borderDash: [5, 5], type: 'line', tension: 0.3, yAxisID: 'yPct', pointRadius: 3, fill: false }
+                );
+            }
 
             bucketQualityChartInstance = new Chart(ctx2, {
                 type: 'line',
@@ -1351,7 +1363,7 @@
                     scales: {
                         x: { grid: { display: false }, ticks: { font: { family: 'Outfit', size: 8 } } },
                         yTime: { type: 'linear', display: showDt, position: 'left', title: { display: true, text: 'Delivery Time Promedio (min)', font: { family: 'Outfit', weight: 'bold', size: 9 } } },
-                        yPct: { type: 'linear', display: showSeam || showStacked, position: 'right', title: { display: true, text: 'Seamless / Stacking / Share (%)', font: { family: 'Outfit', weight: 'bold', size: 9 } }, grid: { display: !showDt }, min: 0, max: 100 }
+                        yPct: { type: 'linear', display: showSeam || showStacked || showShare, position: 'right', title: { display: true, text: 'Seamless / Stacking / Share (%)', font: { family: 'Outfit', weight: 'bold', size: 9 } }, grid: { display: !showDt }, min: 0, max: 100 }
                     }
                 }
             });

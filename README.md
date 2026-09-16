@@ -29,8 +29,8 @@ El repositorio se compone de los siguientes archivos clave:
     *   Muestra un desglose granular de las flotas del rollout.
     *   Clasifica y ordena de manera **descendente** a las flotas según su **variación de distancia de Drop Off (`Var % Dist DO`)** para detectar desvíos operativos rápido.
     *   Formateo consistente de todos los indicadores de variación a exactamente **1 decimal** (ej: `+2.1%`, `-1.5 pp`).
-4.  **Generación de Reportes Estáticos ("Congelar Tablero"):**
-    *   Permite a los analistas cargar los datos de BigQuery, aplicar filtros y hacer clic en *"Congelar Tablero"*.
+4.  **Generación de Reportes Estáticos ("Descargar Tablero"):**
+    *   Permite a los analistas cargar los datos de BigQuery, aplicar filtros y hacer clic en *"Descargar Tablero"*.
     *   Esto genera una descarga instantánea de un archivo HTML autocontenido con los datos codificados dentro de la variable `csvData`, perfecto para compartir reportes rápidos y congelados por Slack o correo electrónico.
 
 ---
@@ -57,4 +57,4 @@ La consulta BigQuery está optimizada para la extracción robusta del dataset:
 2.  Arrastra y suelta tu archivo descargado de BigQuery en la zona de carga (dropzone).
 3.  El tablero clasificará automáticamente la información en base al calendario interno de control/treatment de las flotas del rollout.
 4.  Utiliza los filtros de vertical (Food, Local Stores, Darkstores) y de flota del rollout para explorar la información.
-5.  Haz clic en **"Congelar Tablero (Descargar)"** para guardar un reporte estático con la vista actual y enviárselo a tu equipo.
+5.  Haz clic en **"Descargar Tablero"** para guardar un reporte estático con la vista actual y enviárselo a tu equipo.

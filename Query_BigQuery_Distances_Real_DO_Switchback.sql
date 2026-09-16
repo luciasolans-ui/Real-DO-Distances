@@ -8,19 +8,20 @@
 -- Rango total extraído: 08/07/2026 al 15/09/2026.
 -- Exclusiones aplicadas: Ventana del Mundial 2026 (hasta el 19/07/2026, con sus días de descanso).
 -- =====================================================================================
-
 WITH zdim_sp AS (
-   -- 1. Dimensión de Zonas y Flotas de Argentina para evitar contaminación geográfica
+   -- 1. Dimensión de Zonas y Flotas de Argentina (Mapeo robusto por par (city_id, zone_id) para evitar duplicados, excluyendo zonas sin flotas)
    SELECT
+     ci.id AS city_id,
      zo.id AS zone_id,
-     ANY_VALUE(zo.fleet_id) AS fleet_id
+     zo.fleet_id AS fleet_id
    FROM `peya-data-origins-pro.cl_hurrier.countries` c
    LEFT JOIN UNNEST(c.cities) ci
    LEFT JOIN UNNEST(ci.zones) zo
-   WHERE c.country_code = 'ar' AND zo.id IS NOT NULL
-   GROUP BY zo.id
+   WHERE c.country_code = 'ar' 
+     AND zo.id IS NOT NULL
+     AND ci.id IS NOT NULL
+     AND zo.fleet_id IS NOT NULL
 ),
-
 rdds_sp AS (
    -- 2. Distancia Google ruteada (RDDS) para Pickup y Dropoff
    SELECT
@@ -34,7 +35,6 @@ rdds_sp AS (
      AND region = 'Americas'
    GROUP BY delivery_id
 ),
-
 bags_sp AS (
    -- 3. Ponderador de bolsas para prorratear correctamente DistPU en agrupados
    SELECT
@@ -45,7 +45,6 @@ bags_sp AS (
    WHERE stack_lead_id IS NOT NULL
    GROUP BY stack_lead_id
 ),
-
 cpo_data_sp AS (
    -- 4. Datos de CPO (Costo por Orden)
    SELECT
@@ -58,7 +57,6 @@ cpo_data_sp AS (
    WHERE created_date BETWEEN '2026-07-08' AND '2026-09-15'
      AND country_code = 'ar'
 ),
-
 seamless_data_sp AS (
    -- 5. Tasa de Seamless Delivery
    SELECT
@@ -70,17 +68,21 @@ seamless_data_sp AS (
      AND country_name = 'Argentina'
    GROUP BY oid, dt
 ),
-
 raw_orders_sp AS (
    -- 6. Extracción optimizada de la entrega primaria (PRIMARY DELIVERY ONLY)
+   -- Filtrado metodológico alineado a la Skill: utilizando fo.order_status = "CONFIRMED"
    SELECT
      lo.platform_order_code,
+     fo.order_status AS order_status_fo,
+     lo.order_status AS order_status_lo,
      lo.created_date_local,
-     lo.zone.zone_id,
+     lo.city.city_id AS city_id,
+     lo.zone.zone_id AS zone_id,
      lo.city.city_name,
      lo.timings.zone_stats.mean_delay,
      lo.vendor.vertical_type,
      lo.is_order_late_10,
+     lo.is_preorder, -- Seleccionamos is_preorder para discriminar en la suma de tiempos
      (SELECT AS STRUCT 
         delivery_id, 
         is_stacked, 
@@ -90,17 +92,21 @@ raw_orders_sp AS (
       LIMIT 1
      ) AS prim_del
    FROM `peya-bi-tools-pro.il_logistics.fact_logistic_orders` lo
-   WHERE lo.created_date BETWEEN '2026-07-08' AND '2026-09-15'
+   INNER JOIN `peya-bi-tools-pro.il_core.fact_orders` fo
+     ON lo.platform_order_code = CAST(fo.order_id AS STRING)
+   WHERE lo.created_date BETWEEN '2026-07-08'-1 AND '2026-09-15'+1
      AND lo.created_date_local BETWEEN '2026-07-08' AND '2026-09-15'
+     AND fo.registered_date BETWEEN '2026-07-08' AND '2026-09-15' -- Agregado para mantener eficiencia de partición
      AND lo.country.country_id = 3
-     AND lo.timings.zone_stats.mean_delay IS NOT NULL
-     AND lo.vendor.vertical_type NOT IN ('courier','courier_business')
+     --AND lo.timings.zone_stats.mean_delay IS NOT NULL
+     AND lower(lo.vendor.vertical_type) NOT LIKE ('%courier%')
 ),
-
 universe_sp AS (
    -- 7. Agrupamiento, mapeo de flotas e identificación de verticales (Soporte robusto e inclusivo para DMarts/Darkstores)
    SELECT
      ro.platform_order_code,
+     order_status_fo,
+     order_status_lo,
      ro.created_date_local AS dt,
      z.fleet_id,
      ro.city_name,
@@ -117,9 +123,10 @@ universe_sp AS (
      ro.prim_del.delivery_id AS did,
      ro.prim_del.is_stacked,
      ro.prim_del.actual_delivery_time AS delivery_time_seconds,
-     ro.is_order_late_10 AS ol10
+     ro.is_order_late_10 AS ol10,
+     ro.is_preorder -- Pasamos is_preorder
    FROM raw_orders_sp ro
-   INNER JOIN zdim_sp z ON z.zone_id = ro.zone_id
+   INNER JOIN zdim_sp z ON z.zone_id = ro.zone_id AND z.city_id = ro.city_id -- Evita cruces duplicados por ids de zona repetidos entre ciudades
    WHERE ro.prim_del.delivery_id IS NOT NULL
      -- Exclusión de distorsión de la ventana del Mundial 2026 (08/07 al 19/07 excepto días de descanso)
      AND NOT (
@@ -127,36 +134,30 @@ universe_sp AS (
        AND ro.created_date_local NOT IN ('2026-07-08', '2026-07-12', '2026-07-13', '2026-07-16', '2026-07-17') 
      )
 )
-
 -- 8. Ensamble de Métricas consolidadas agrupadas por día, flota y vertical
 SELECT
-   u.dt                                                                        AS fecha,
-   u.fleet_id                                                                  AS fleet_id,
-   ANY_VALUE(u.city_name)                                                      AS city_name,
-   u.vertical                                                                  AS vertical,
-   CAST(FLOOR(u.md / 2) * 2 AS INT64)                                          AS mean_delay_zona_min,
-
-   COUNT(*)                                                                    AS orders_count,
-   ROUND(SUM(SAFE_DIVIDE(u.delivery_time_seconds, 60)), 2)                     AS delivery_time_sum,
-   SUM(IF(CAST(u.ol10 AS STRING) IN ('1', 'true', 'TRUE'), 1, 0))              AS late_10_sum,
-   SUM(IF(s.non_seamless = 0, 1, 0))                                           AS seamless_sum,
-   SUM(IF(CAST(u.is_stacked AS STRING) IN ('1', 'true', 'TRUE'), 1, 0))        AS stacked_sum,
-
-   ROUND(SUM(COALESCE(b.lead_pu / b.bagsize, rd.pu_g) / 1000), 3)              AS pickup_distance_sum,
-   ROUND(SUM(rd.dof_g / 1000), 3)                                              AS dropoff_distance_sum,
-   ROUND(SUM((COALESCE(b.lead_pu / b.bagsize, rd.pu_g) + COALESCE(rd.dof_g, 0)) / 1000), 3) AS total_distance_sum,
-
-   ROUND(SUM(cp.cpo_base), 2)                                                  AS cpo_base_sum,
-   ROUND(SUM(cp.cpo_pu), 2)                                                    AS cpo_dist_pu_sum,
-   ROUND(SUM(cp.cpo_do), 2)                                                    AS cpo_dist_do_sum,
-   ROUND(SUM(cp.cpo_total), 2)                                                 AS cpo_total_sum
-
+   u.dt       AS fecha,
+   u.fleet_id       AS fleet_id,
+   u.vertical       AS vertical,
+   CAST(FLOOR(u.md / 2) * 2 AS INT64)       AS mean_delay_zona_min,
+   COUNT(*)       AS orders_total_count, -- Representa todas las ordenes (con pre-órdenes incluidas para volumen), es el denominador de seamelss
+   COUNT(CASE WHEN order_status_fo = "CONFIRMED" AND order_status_lo = "completed" THEN platform_order_code ELSE NULL END) AS orders_completed_count, -- Representa "orders completed" (con pre-órdenes incluidas para volumen), es el denominador de stacking, ol_10 y de cpo
+   COUNT(CASE WHEN u.is_preorder IS FALSE AND order_status_fo = "CONFIRMED" AND order_status_lo = "completed" THEN platform_order_code ELSE NULL END)  AS delivery_time_orders_count, -- Denominador exclusivo para DT (completadas no-preorders), es el denominador de dt
+   ROUND(SUM(IF(u.is_preorder IS FALSE AND order_status_fo = "CONFIRMED" AND order_status_lo = "completed", SAFE_DIVIDE(u.delivery_time_seconds, 60), 0)), 2) AS delivery_time_sum, -- Suma de DT excluyendo pre-órdenes como en la skill
+   SUM(CASE WHEN order_status_fo = "CONFIRMED" AND order_status_lo = "completed" THEN u.ol10 ELSE NULL END)       AS late_10_sum, -- Optimizado (ol10 es entero 0/1)
+   SUM(IF(s.non_seamless = 0 AND order_status_fo = "CONFIRMED" AND order_status_lo = "completed", 1, 0))       AS seamless_sum,
+   SUM(IF(u.is_stacked IS TRUE AND order_status_fo = "CONFIRMED" AND order_status_lo = "completed", 1, 0))       AS stacked_sum, -- Optimizado (is_stacked es boolean)
+   ROUND(SUM(COALESCE(b.lead_pu / b.bagsize, rd.pu_g)) / 1000, 3)       AS pickup_distance_sum,
+   ROUND(SUM(rd.dof_g) / 1000, 3)       AS dropoff_distance_sum,
+   ROUND(SUM((COALESCE(b.lead_pu / b.bagsize, rd.pu_g) + COALESCE(rd.dof_g, 0)) / 1000), 3)       AS total_distance_sum,
+   ROUND(SUM(cp.cpo_base), 2)       AS cpo_base_sum,
+   ROUND(SUM(cp.cpo_pu), 2)       AS cpo_dist_pu_sum,
+   ROUND(SUM(cp.cpo_do), 2)       AS cpo_dist_do_sum,
+   ROUND(SUM(cp.cpo_total), 2)       AS cpo_total_sum
 FROM universe_sp u
 LEFT JOIN seamless_data_sp s  ON s.oid = u.platform_order_code AND s.dt = u.dt
 LEFT JOIN rdds_sp           rd ON rd.delivery_id = u.did
 LEFT JOIN bags_sp           b  ON b.lead        = rd.stack_lead_id
 LEFT JOIN cpo_data_sp       cp ON cp.delivery_id = u.did
-GROUP BY 1, 2, u.vertical, 5
-ORDER BY
-   fecha DESC,
-   fleet_id;
+GROUP BY  ALL
+ORDER BY fecha DESC,fleet_id;

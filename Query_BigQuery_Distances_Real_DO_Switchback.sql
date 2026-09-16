@@ -1,7 +1,7 @@
 -- =====================================================================================
 -- PROYECTO REAL DO DISTANCES: EXTRACCIÓN DE SÁBANA DE ÓRDENES (HISTÓRICO & TEST SWITCHBACK)
 --
--- Esta consulta extrae la sábana de órdenes agregada por día, flota y vertical
+-- Esta consulta extrae la sábana de órdenes agregada por día, flota, vertical y tier horario
 -- para el periodo del Switchback Test (02/09/2026 al 15/09/2026) y su respectivo
 -- baseline de las últimas 8 semanas (08/07/2026 al 01/09/2026).
 --
@@ -80,6 +80,7 @@ raw_orders_sp AS (
      fo.order_status AS order_status_fo,
      lo.order_status AS order_status_lo,
      lo.created_date_local,
+     lo.created_at_local, -- Agregada para clasificar el tier horario
      lo.city.city_id AS city_id,
      lo.zone.zone_id AS zone_id,
      lo.city.city_name,
@@ -110,7 +111,7 @@ raw_orders_sp AS (
      AND lower(lo.vendor.vertical_type) NOT LIKE ('%courier%')
 ),
 universe_sp AS (
-   -- 7. Agrupamiento, mapeo de flotas e identificación de verticales (Soporte robusto e inclusivo para DMarts/Darkstores)
+   -- 7. Agrupamiento, mapeo de flotas e identificación de verticales y tiers horarios alineados con la lógica del usuario
    SELECT
      ro.platform_order_code,
      order_status_fo,
@@ -128,6 +129,13 @@ universe_sp AS (
        WHEN LOWER(ro.vertical_type) = 'restaurants' THEN 'RESTAURANTS'
        ELSE 'LOCAL STORES'
      END AS vertical,
+     CASE 
+       WHEN EXTRACT(HOUR FROM ro.created_at_local) BETWEEN 7 AND 10 THEN '2 - Morning'
+       WHEN EXTRACT(HOUR FROM ro.created_at_local) BETWEEN 11 AND 14 THEN '3 - Lunch'
+       WHEN EXTRACT(HOUR FROM ro.created_at_local) BETWEEN 15 AND 18 THEN '4 - Afternoon'
+       WHEN EXTRACT(HOUR FROM ro.created_at_local) BETWEEN 19 AND 23 THEN '5 - Dinner'
+       ELSE '1 - Post Dinner'
+     END AS time_tier,
      ro.prim_del.delivery_id AS did,
      ro.prim_del.is_stacked,
      ro.prim_del.actual_delivery_time AS delivery_time_seconds,
@@ -143,11 +151,12 @@ universe_sp AS (
        AND ro.created_date_local NOT IN ('2026-07-08', '2026-07-12', '2026-07-13', '2026-07-16', '2026-07-17') 
      )
 )
--- 8. Ensamble de Métricas consolidadas agrupadas por día, flota y vertical
+-- 8. Ensamble de Métricas consolidadas agrupadas por día, flota, vertical y tier horario
 SELECT
    u.dt                 AS fecha,
    u.fleet_id           AS fleet_id,
    u.vertical           AS vertical,
+   u.time_tier          AS time_tier,
    CAST(FLOOR(u.md / 2) * 2 AS INT64)      AS mean_delay_zona_min,
    u.is_incident        AS is_incident,
    COUNT(*)             AS orders_total_count,
@@ -157,6 +166,11 @@ SELECT
    SUM(CASE WHEN order_status_fo = "CONFIRMED" AND order_status_lo = "completed" THEN u.ol10 ELSE NULL END)        AS late_10_sum, 
    SUM(IF(s.non_seamless = 0 AND order_status_fo = "CONFIRMED" AND order_status_lo = "completed", 1, 0))           AS seamless_sum,
    SUM(IF(u.is_stacked IS TRUE AND order_status_fo = "CONFIRMED" AND order_status_lo = "completed", 1, 0))         AS stacked_sum, 
+   
+   -- MEAN DELAY EXACTO CALCULADO SOBRE ÓRDENES TOTALES (u.md IS NOT NULL), REMOVIENDO FILTROS DE ESTADO COMPLETED/CONFIRMED
+   ROUND(SUM(IF(u.md IS NOT NULL, u.md, 0)), 2) AS mean_delay_sum,
+   COUNT(CASE WHEN u.md IS NOT NULL THEN platform_order_code ELSE NULL END) AS mean_delay_orders_count,
+
    ROUND(SUM(COALESCE(b.lead_pu / b.bagsize, rd.pu_g)) / 1000, 3)        AS pickup_distance_sum,
    ROUND(SUM(rd.dof_g) / 1000, 3)                                        AS dropoff_distance_sum,
    ROUND(SUM((COALESCE(b.lead_pu / b.bagsize, rd.pu_g) + COALESCE(rd.dof_g, 0)) / 1000), 3)                        AS total_distance_sum,
